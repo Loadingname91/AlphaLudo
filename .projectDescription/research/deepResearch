@@ -1,0 +1,365 @@
+```table-of-contents
+```
+
+**Date:** 2025-11-12
+**Tags:** #UoUAI
+
+---
+
+# Resource 
+
+1. https://github.com/andresc889/AILudoPlayer?tab=readme-ov-file - AI Based Ludo Player - uses FANN
+2. https://arxiv.org/html/2509.25052v1 - Using llms to figure out the environment - # Cogito, Ergo Ludo: An Agent that Learns to Play by Reasoning and Planning
+3. https://ieeexplore.ieee.org/document/10409945 - Incorporating Feature Penalty in Reinforcement Learning for Ludo Game
+4. https://ieeexplore.ieee.org/document/10960023 - # Developing Game AI for Classic Games Using Reinforcement Learning
+5. https://github.com/MehranSangrasi/AI-Ludo - AI ludo game 
+6. https://ieeexplore.ieee.org/document/6374142 - # TD(λ) and Q-learning based Ludo players
+7. https://link.springer.com/chapter/10.1007/978-981-16-1395-1_4 - Multi agent ludo game collaborate path
+8. https://link.springer.com/chapter/10.1007/978-3-319-72823-0_7 - # Multi-base Station Energy Cooperation Based on Nash Q-Learning Algorithm
+
+# Deep research 
+
+## **Part 1: Ludo as a Reinforcement Learning Challenge**
+
+### **1.1 Introduction: Why Ludo is Deceptively Complex**
+
+The board game Ludo, while often perceived as a simple game of chance, presents a formidable and nuanced challenge for artificial intelligence. Its unique structure, which combines high environmental randomness with deterministic strategic choices, makes it an ideal testbed for a wide spectrum of reinforcement learning (RL) algorithms.
+
+Successfully modeling Ludo requires an agent to overcome four distinct challenges:
+
+1. **High Stochasticity:** The primary game mechanic is a six-sided die roll. This introduces a high degree of environmental randomness, forcing any agent to move beyond simple deterministic planning and into probabilistic reasoning. The agent must select an action that is "best" on average, given the 1/6 probability of any outcome. This high stochasticity and large branching factor have been identified as a "major challenge for Artificial Intelligence researchers".1  
+2. **Multi-Agent Environment:** Ludo is a four-player game where each player's goal is in direct conflict with the others. This creates a complex, *non-stationary* environment. From the perspective of a single agent, the policies of the other three players are part of the environment. If these opponents are also learning and adapting, the environment's dynamics are constantly changing, which can destabilize many simple RL algorithms.  
+3. **Large and Complex State Space:** A full, uncompressed representation of the Ludo board is combinatorially explosive. An agent must track the precise location of its own four tokens plus the 12 tokens of its opponents, resulting in a state space so vast that it is computationally infeasible to explore or store exhaustively.  
+4. **Sparse and Delayed Rewards:** The ultimate signal of success or failure—winning or losing the game—is an extremely sparse and delayed reward. An agent may make hundreds of moves before this terminal reward is received. This "temporal credit assignment" problem makes it difficult for an agent to determine which of its early-game moves were responsible for its eventual victory or defeat.
+
+### **1.2 Formalizing Ludo as a Markov Decision Process (MDP)**
+
+To apply reinforcement learning, the game of Ludo is typically modeled as a Markov Decision Process (MDP).2 An MDP provides the mathematical framework for modeling decision-making in situations where outcomes are partly random and partly under the control of a decision-maker.
+
+This formalization is the explicit foundation for "Multi-agent Ludo Game Collaborative Path Planning," which uses an MDP to model the game's sequence of states and transitions.3
+
+This formalization immediately exposes a critical simplification that most single-agent RL implementations must make. In a true four-player game, the transition from one state to the next depends on the actions of all four players. To make the problem tractable, most implementations treat the opponents as "part of the environment." This is a simplification, as it assumes the opponents' strategies are fixed (or random), when in reality they may be adaptive.
+
+## **Part 2: Foundational Models: Tabular Q-Learning**
+
+The most foundational RL algorithm applied to Ludo is **Q-learning**. This is a model-free, off-policy algorithm that learns a "Q-value" for each state-action pair, $Q(s, a)$, representing the expected future reward for taking action $a$ in state $s$. In its simplest *tabular* form, these values are stored in a massive lookup table.
+
+### **Case Study: NDurocher/YARAL (Tabular Q-Learning)**
+
+The YARAL project provides a clear implementation of this tabular Q-learning approach.5 The developers immediately faced the state-space explosion problem and solved it using **manual state-space abstraction**.
+
+* **State Representation:** Instead of tracking every board position, the state for each piece is compressed into one of four distinct categories:  
+  1. **Home:** The piece is in the starting yard.  
+  2. **Goal Zone:** The piece is on the final six-square home stretch.  
+  3. **Safe:** The piece is on a "globe" (safe) tile or is not within six tiles of an opponent.  
+  4. **Danger:** The piece is within striking distance of an enemy or on an opponent's home globe.5  
+* **Action Representation:** The action space is similarly abstracted into 10 heuristic categories, such as "Open" (move from home), "Kill" (capture an opponent), and "Protect" (move to a safe globe).5
+
+This project is a perfect case study in the trade-offs of tabular RL. By manually compressing the state space, the problem becomes computationally feasible. However, this comes at the cost of optimality. The agent's policy is limited by its perception; it cannot distinguish between two different "Danger" states. Despite this, the agent was able to learn a policy that "significantly dominate(s) a random selection player".5
+
+## **Part 3: Advanced Tabular Methods: TD($\\lambda$) and Expert Bootstrapping**
+
+A more advanced tabular-style method is **Temporal Difference (TD($\\lambda$))**. This approach, famously used in the TD-Gammon agent for backgammon, enhances basic TD learning with *eligibility traces*, which help assign credit for a final win/loss reward to a long sequence of moves, mitigating the sparse reward problem.
+
+### **Academic Study: "TD($\\lambda$) and Q-learning based Ludo players"**
+
+This academic paper presents a sophisticated approach that implements both a Q-learning player and a TD($\\lambda$) player.6
+
+* **Methodology:** The objective of the evaluator is to estimate the *probability of winning* from any given state, much like TD-Gammon.12  
+* **Expert Bootstrapping:** The most critical aspect of this paper is that the agents do not learn *tabula rasa* (from a blank slate). Instead, the authors first implement an "expert player"—a hand-crafted bot with strong, pre-programmed heuristics. This expert player is then used to *train* the TD($\\lambda$) agent.6  
+* **Results:** The paper notes that while the RL-based players *do* outperform the expert player, they do so "only slightly".8 This suggests that good hand-crafted heuristics are already very effective, setting a high bar for a learning agent to overcome.
+
+## **Part 4: Deep Q-Networks (DQN) and Function Approximation**
+
+The tabular methods discussed above all run into a hard wall: the "curse of dimensionality." To learn a policy over the *full, uncompressed* state space, the agent needs a way to generalize from states it has seen to states it has *never* seen.
+
+This is the role of **function approximation**, where a neural network is used to *estimate* the Q-value function. This approach is known as a **Deep Q-Network (DQN)**.
+
+### **Case Study 1: MehranSangrasi/AI-Ludo (The Modern DQN)**
+
+This repository is a clear, modern example of a DQN applied to Ludo.14
+
+* **Algorithm:** Deep Q-learning (DQN).14  
+* **State Representation:** The state is a full, unabstracted representation of the board, including Current Player, Dice Number, and all Token Positions (x, y coordinates). This is flattened into a 1-dimensional vector.14  
+* **Network Architecture:** A simple 2-layer fully connected network (32-neuron input, 64-neuron hidden layer, 4-neuron output layer).14  
+* **Reward Shaping (The Key Design Choice):** This project's most significant feature is its heavy reliance on "reward shaping" to solve the sparse reward problem. The agent is given frequent, intermediate rewards for good behavior:  
+  * **\+100:** Winning the game.  
+  * **\+50:** Getting a single token to the winner rank.  
+  * **\+20:** Capturing an opponent's token.  
+  * **\+10:** Landing on a safe position.  
+  * **\+5:** Getting a token out of home.  
+  * **\+1:** Simply moving a token.  
+  * **\-10:** Selecting an invalid action.14
+
+This dense reward system dramatically accelerates learning but also introduces significant *human bias*. The agent is heavily biased to learn a greedy, aggressive policy, which may not be the true, globally optimal strategy.
+
+### **Case Study 2: andresc889/AILudoPlayer (The Cautionary Tale)**
+
+This project serves as a powerful cautionary tale about the difficulties of using Q-learning with neural networks.15
+
+* **Algorithm:** Q-learning with a neural network as the function approximator, using the FANN (Fast Artificial Neural Network) library.15  
+* **The Critical Problem:** The project's README contains a vital empirical finding: "It turns out that Q-learning is hard to tune (even more so when neural networks are used).... the agent tends to become dumber as it trains more".15  
+* **Analysis:** This project is a perfect demonstration of the infamous "deadly triad" of reinforcement learning. Combining **Function Approximation** (the FANN), **Off-Policy Learning** (Q-learning), and **Bootstrapping** (learning a value from another estimated value) is known to be unstable. This very instability is what motivated the development of modern DQN, which adds stabilization techniques (Experience Replay and Target Networks) that this project lacks.
+
+### **Case Study 3: ManuOtel/ludo-AI (The Modern Standard)**
+
+This project represents the modern, stable solution to the problems seen in the FANN project.16
+
+* **Algorithm:** The project is explicitly labeled "DQNN" (Deep Q-Network).16  
+* **Technology:** It uses PyTorch, a modern deep learning framework.16  
+* **Analysis:** While the README is sparse on specific implementation details 16, its use of the "DQNN" label and a modern framework strongly implies the use of the standard stabilization techniques that AILudoPlayer 15 lacked. This, along with general-purpose libraries like rlcard (which also provides standard DQN implementations 17), represents the stable, standard method for implementing a DQN for Ludo.
+
+## **Part 5: Advanced Methods: Search and Policy Gradients**
+
+The DQN methods in Part 4 all attempt to learn the *value* of an action, $Q(s, a)$. In a highly stochastic game like Ludo, this value is a complex, high-variance expectation (it must average over all possible dice rolls and opponent responses). An alternative paradigm, made famous by AlphaZero, is to combine a neural network with a **search algorithm**.
+
+### **5.1 Case Study: rajtilakls2510/solving\_ludo1 ("AlphaLudo")**
+
+This project is the most sophisticated implementation in this survey and represents the state-of-the-art for Ludo AI.1
+
+* **Algorithm:** An "AlphaZero style implementation".1  
+* **Architecture:** This is not a single program but a distributed, asynchronous **actor-learner system**:  
+  1. **Learner:** The central "brain" that trains a Value network and stores model "checkpoints".1  
+  2. **Actors:** Worker processes that pull the latest checkpoint from the Learner, play games against themselves (self-play), and send the generated game data back to the Learner.1  
+  3. **MCTS (Monte-Carlo Tree Search):** This is the "policy." To decide on a move, the Actor runs an MCTS. The MCTS algorithm simulates many possible game futures, and the Value network is used to evaluate the "leaf nodes" (the end states) of these simulations.1
+
+This architecture is perfectly suited for Ludo:
+
+* **It Natively Handles Stochasticity:** The MCTS tree can explicitly model the dice roll as a "chance node," averaging over all six possible outcomes.  
+* **It Solves the Sparse Reward Problem:** The agent learns *only* from the final win/loss signal. It does not require the biased, hand-crafted reward shaping seen in MehranSangrasi/AI-Ludo.14  
+* **It is Stable:** The search is much more robust than a greedy $\\text{argmax } Q(s, a)$ policy from a DQN.
+
+### **5.2 Policy Gradient Methods (A Theoretical Contender)**
+
+Another class of advanced algorithms, **policy gradient methods** like Proximal Policy Optimization (PPO), are strong candidates for Ludo. These methods directly learn a *policy* (a probability distribution over actions) and are known for their stability in high-variance environments.
+
+* **Extrapolation from "Developing Game AI for Classic Games..."**: This academic paper, while not about Ludo, provides a critical analogy.18 The authors compare Q-learning for the Snake game (a simple, discrete environment) with **PPO** for the Mario game (a complex, high-variance, continuous-space environment).18  
+* **Relevance to Ludo:** Ludo is a hybrid: it has a discrete action space but a high-variance, stochastic environment. PPO's renowned stability makes it a very strong candidate, as it is designed to prevent the "agent becomes dumber" policy collapse seen in the AILudoPlayer project.15
+
+## **Part 6: The Multi-Agent (MARL) Perspective**
+
+A critical flaw underlies almost all the projects discussed: they treat Ludo as a single-agent problem, a fallacy known as **Independent Q-Learning (IQL)**. They model the other three players as simply being "part of the environment's randomness."
+
+The problem with this assumption is **non-stationarity**. The very definition of an MDP is that the environment's transition probabilities are *stationary* (fixed). But in Ludo, if your opponents are also learning agents, their policies are *changing*. This "moving target" is a primary source of instability.
+
+### **The Formal Solution: Nash Q-Learning**
+
+The formally correct way to model Ludo is as a multi-agent *stochastic game*. The true solution requires Multi-Agent Reinforcement Learning (MARL).
+
+* **Analogous Paper: "Multi-base Station Energy Cooperation..."**: This paper, while about 5G base stations, uses the **Nash Q-Learning Algorithm**.6  
+* **Relevance:** In this framework, an agent learns the value of the *joint action* of all agents, $Q(s, a\_1, a\_2,..., a\_n)$. The goal is to find a **Nash Equilibrium**—a state where no player can unilaterally improve its outcome by changing its strategy.  
+* **Analysis:** This is the *formally correct* way to model Ludo. This is, of course, computationally intractable due to the exponential explosion of the joint action space. This theoretical paper is vital because it provides the "gold standard" framework and highlights the massive theoretical shortcut that all IQL-based implementations must take.  
+* **Collaborative MARL:** A final perspective is offered by "Multi-agent Ludo Game Collaborative Path Planning," which explores *cooperative* (team-based) MARL, also using an MDP framework.3
+
+## **Part 7: Novel Research Directions and Future Frontiers**
+
+### **7.1 Reward and Penalty Engineering: The "ILA" Agent**
+
+While the MehranSangrasi project 14 "solves" the sparse reward problem by lumping all outcomes into a single, hand-shaped reward signal, recent research suggests a more nuanced approach.
+
+* **Paper: "Incorporating Feature Penalty in Reinforcement Learning for Ludo..."**: This paper introduces the ILA (Intelligent Ludo Agent) and argues *against* combining positive and negative outcomes into a single reward.28  
+* **Methodology:** The ILA's Q-learning methodology uses a separate **Penalty Table**.28 The agent's Q-learning tables maintain a history of rewards, while the separate Penalty Table (with values from 0 to 0.25) maintains a history of penalties.28  
+* **Analysis:** This is a clever and powerful design. By *decoupling* the learning of gains (Q-table) from the learning of risks (Penalty-table), the agent can make a more robust, less-reckless decision. This prevents an agent from learning to perform high-risk, high-reward actions that are sub-optimal in the long run.
+
+### **7.2 The LLM Frontier: "Cogito, Ergo Ludo"**
+
+The final and most forward-looking research direction moves beyond numerical optimization entirely.
+
+* **Paper: "Cogito, Ergo Ludo: An Agent that Learns to Play by Reasoning and Planning"**.37  
+* **Concept:** While the paper itself is not available 37, its title signals a profound paradigm shift. Every other method discussed in this report is *sub-symbolic*. These agents learn numerical values: $Q(s,a) \= 0.87$. A DQN agent *doesn't know* what "danger" is; it just knows that certain board states are associated with a low expected value.  
+* **Analysis:** A Large Language Model (LLM) agent would instead use **symbolic reasoning**. It would *reason* about the game, potentially in natural language: "My blue piece is 4 steps away from a red piece. The red player's home entry is on a 'kill' path for my blue piece. This is a high-risk position. My green piece, however, is on a safe square. Therefore, I should move my green piece." This represents a move from value-based estimation to explicit, causal-based planning.
+
+## **Part 8: Synthesis and Practical Implementation Guide**
+
+### **8.1 Curated GitHub Projects for Implementation**
+
+* **rajtilakls2510/solving\_ludo1** 1: State-of-the-art AlphaZero-style (MCTS \+ Value Network) implementation.  
+* **MehranSangrasi/AI-Ludo** 14: A clear, modern DQN implementation with heavy reward shaping.  
+* **ManuOtel/ludo-AI** 16: A stable, modern DQN (DQNN) using PyTorch.  
+* **NDurocher/YARAL** 5: The best "baseline" example of tabular Q-learning with manual state abstraction.  
+* **andresc889/AILudoPlayer** 15: A "cautionary tale" project (Q-learning \+ FANN) that demonstrates Q-learning instability.  
+* **suhasasumukh/AI-Ludo-Game** 39: A JavaScript/HTML-based Ludo AI project.
+
+### **8.2 Comparative Analysis of Ludo RL GitHub Projects**
+
+| Repository | Core Algorithm | State Representation | Reward Design | Key Dependencies | Key Insight / Maturity |
+| :---- | :---- | :---- | :---- | :---- | :---- |
+| **NDurocher/YARAL** 5 | Tabular Q-Learning | **Abstracted/Manual.** ("Home," "Goal Zone," "Safe," "Danger") 5 | Sparse (Win/Loss) \+ Heuristic Actions ("Kill," "Protect") 5 | Python | **Baseline / Educational.** Perfect for learning about state abstraction. Computationally cheap but not optimal. |
+| **andresc889/AILudoPlayer** 15 | "Naive" Q-Learning \+ NN | Full Board State | Not specified (likely sparse) | Python, FANN 15 | **Cautionary Tale.** A-historical. Demonstrates the "deadly triad" and Q-learning instability. Agent "becomes dumber".15 |
+| **MehranSangrasi/AI-Ludo** 14 | Deep Q-Network (DQN) | Full Board State (1D vector) 14 | **Heavy Reward Shaping.** (+100 win, \+20 kill, \+1 move, etc.) 14 | Python, Pygame | **Standard / Heuristic.** A solid, modern DQN. Its heavy reward shaping is a clear design choice that biases the agent for faster, more aggressive learning. |
+| **ManuOtel/ludo-AI** 16 | Deep Q-Network (DQNN) | Not specified (likely full state) | Not specified | Python, PyTorch 16 | **Modern Standard.** Implies a stable DQN implementation (with Experience Replay/Target Nets) using a modern framework. |
+| **rajtilakls2510/solving\_ludo1** 1 | AlphaZero-style (MCTS \+ Value Network) | Full Board State | **Sparse (Win/Loss only).** | Python, TensorFlow, RPyC 1 | **State-of-the-Art.** Architecturally complex (asynchronous actor-learner model).1 MCTS natively handles stochasticity. Most robust. |
+
+### **8.3 Additional Learning Resources**
+
+* **Tutorials:** The YouTube video "Q Learning... Implement Q Learning to teach the agent how to play the board game LUDO" by Nicolai Nielsen 40 provides a practical, hands-on tutorial.  
+* **General RL Frameworks:** The rlcard library 17 is an extensive toolkit for applying RL to various card and board games, including standard implementations of algorithms like DQN and Deep Monte-Carlo (DMC).17  
+* **Basic Game Environments:** Projects like the "Python Ludo Game Project" from PythonGeeks 42 or Data Flair 43 are non-AI, Pygame-based implementations of the Ludo game engine. These are invaluable, as they provide a ready-made "environment" upon which an RL agent can be built.
+
+### **8.4 Expert Recommendation: Strategic Implementation Pathways**
+
+Based on this comprehensive survey, the optimal implementation strategy depends entirely on your goal.
+
+* **Path 1: The "Learning" Implementation (Baseline)**  
+  * **Goal:** To understand the fundamentals of RL and the Ludo environment.  
+  * **Action:** Re-implement the tabular Q-learning agent from NDurocher/YARAL.5  
+  * **Focus:** State Abstraction. The key task is to experiment with the feature engineering. This path provides a deep understanding of the trade-off between feasibility and optimality.  
+* **Path 2: The "Standard" Implementation (DQN)**  
+  * **Goal:** To build a competent, modern bot that can defeat non-expert players.  
+  * **Action:** Use MehranSangrasi/AI-Ludo 14 or ManuOtel/ludo-AI 16 as a template.  
+  * **Focus:** Reward Shaping. The key task is to experiment with the reward values from.14 This path explores how to *bias* an agent to learn a desired strategy, while being mindful of the instability problems highlighted in.15  
+* **Path 3: The "State-of-the-Art" Implementation (Search)**  
+  * **Goal:** To build a *dominant*, near-optimal agent.  
+  * **Action:** Use rajtilakls2510/solving\_ludo1 1 as a blueprint.  
+  * **Focus:** Architecture. This is a significant software engineering challenge, requiring the implementation of a distributed actor-learner system and MCTS. This is the most robust and highest-performing approach.  
+* **Path 4: The "Research" Implementation (Novelty)**  
+  * **Goal:** To publish a paper or advance the state of the art in Ludo AI.  
+  * **Action:** Implement a novel approach.  
+    * **Vector A (Novel Rewards):** Implement the "Feature Penalty" model from 28, decoupling the Q-table (for gains) from a Penalty-table (for risks).  
+    * **Vector B (True MARL):** Implement a simplified version of Nash Q-Learning 22 or another modern MARL algorithm to *formally* model the 4-player game.  
+    * **Vector C (SOTA Algorithm):** Implement a PPO-based agent, as extrapolated from 18, to create a highly stable agent for Ludo's high-variance environment.
+
+## **Part 9: Conclusion**
+
+The implementation of a reinforcement learning agent for Ludo is a non-trivial task that serves as a microcosm for many of the greatest challenges in the field of AI. This survey has charted the evolution of approaches, revealing a clear hierarchy of complexity and performance.
+
+The journey begins with foundational **tabular Q-learning** 5, which is only made feasible through manual state abstraction. This evolves into **Deep Q-Networks** 16, which solve the state-space problem but introduce new challenges of instability 15 and require careful, bias-introducing **reward shaping**.14 The current state-of-the-art is represented by **search-based methods** (MCTS) combined with neural networks, as seen in the "AlphaLudo" project.1
+
+Ultimately, the most significant challenges are not merely *which* algorithm to use, but how to address the deeper, structural problems of the Ludo environment:
+
+1. **Reward Design:** The conflict between *biased, hand-crafted rewards* 14 and *decoupled reward/penalty systems* 28 versus learning from the *sparse, unbiased win/loss signal*.1  
+2. **The Multi-Agent Problem:** The gap between the *practical, but flawed, IQL assumption* and the *formally correct, but intractable, MARL framework* like Nash Q-Learning.22
+
+The future of the field points away from simple value-based estimation and toward these more robust solutions: hybrid search-and-learning architectures 1, novel reward/penalty structures 28, and, on the distant horizon, symbolic reasoning systems that "understand" the game.37
+
+## **Part 10: Sources**
+
+This list provides the primary sources used for the information in this report, corresponding to the citation numbers in the text.
+
+1 GitHub: rajtilakls2510/solving\_ludo1. URL: https://github.com/rajtilakls2510/solving\_ludo1  
+2 StackOverflow: "how to make an efficient ludo game playing ai-algorithm". URL: https://stackoverflow.com/questions/5163806/how-to-make-an-efficient-ludo-game-playing-ai-algorithm  
+3 "Multi-agent Ludo Game Collaborative Path Planning based on Markov Decision Process". URL: https://www.lingayasvidyapeeth.edu.in/sanmax/wp-content/uploads/2024/01/3.4.5-List-of-chapterbook-with-the-links-redirecting-to-the-source-website-min.pdf  
+5 GitHub: NDurocher/YARAL. URL:(https://github.com/NDurocher/YARAL)  
+6 "Multi-base Station Energy Cooperation Based on Nash Q-Learning Algorithm". URL: https://www.springerprofessional.de/5g-for-future-wireless-networks/15337218  
+7 "TD(λ) and Q-learning based Ludo players". URL:(https://www.semanticscholar.org/paper/TD(%CE%BB)-and-Q-learning-based-Ludo-players-Alhajry-Alvi/390001c3e2ce5603a7d74bbbe7844a1a1dca73d6)  
+12 "TD(λ) and Q-learning based Ludo players" (Methodology). URL:(https://www.researchgate.net/publication/261279306\_TDl\_and\_Q-learning\_based\_Ludo\_players)  
+8 "TD(λ) and Q-learning based Ludo players" (Expert Bootstrapping). URL:(https://www.semanticscholar.org/paper/TD(%CE%BB)-and-Q-learning-based-Ludo-players-Alhajry-Alvi/390001c3e2ce5603a7d74bbbe7844a1a1dca73d6)  
+13 "TD(λ) and Q-learning based Ludo players" (Results). URL: https://www.researchgate.net/figure/Performance-of-learning-environments\_tbl2\_220834907  
+16 GitHub: ManuOtel/ludo-AI. URL: https://github.com/ManuOtel/ludo-AI  
+17 GitHub: datamllab/rlcard. URL: https://github.com/datamllab/rlcard  
+14 GitHub: MehranSangrasi/AI-Ludo. URL:(https://github.com/MehranSangrasi/AI-Ludo)  
+15 GitHub: andresc889/AILudoPlayer. URL: https://github.com/andresc889/AILudoPlayer  
+18 "Developing Game AI for Classic Games Using Reinforcement Learning". URL: https://priyanshu6268.github.io/Portfolio/  
+44 "Developing Game AI for Classic Games Using Reinforcement Learning" (PDF). URL: https://ieeexplore.ieee.org/iel8/10959336/10959735/10960023.pdf  
+28 "Incorporating Feature Penalty in Reinforcement Learning for Ludo Game". URL: https://zuscholars.zu.ac.ae/works/6379/ (See also IEEE: https://ieeexplore.ieee.org/document/10409945)  
+36 "Incorporating Feature Penalty in Reinforcement Learning for Ludo Game" (PDF). URL: https://ieeexplore.ieee.org/iel7/10409867/10409868/10409945.pdf  
+37 "Cogito, Ergo Ludo: An Agent that Learns to Play by Reasoning and Planning". URL: https://arxiv.org/html/2509.25052v1 (Inaccessible)  
+39 GitHub: suhasasumukh/AI-Ludo-Game. URL: https://github.com/suhasasumukh/AI-Ludo-Game  
+40 YouTube: "Q Learning... Implement Q Learning to teach the agent how to play the board game LUDO". URL:(https://www.youtube.com/watch?v=piTnn3dJ9QE)  
+43 Data Flair: "Python Ludo Game Project". URL: https://data-flair.training/blogs/python-ludo-game/  
+42 PythonGeeks: "Create Ludo Game Project in Python". URL: https://pythongeeks.org/python-ludo-game-project/  
+41 rlcard (DMC vs. DQN study). URL:(https://research.ou.nl/files/46333643/Weij\_W\_van\_der\_IM9906\_SE\_AF\_scriptie\_Pure.pdf)
+
+## **Part 11: Additional Research Articles and Resources**
+
+This section contains a comprehensive bibliography of the academic papers, code repositories, and other resources analyzed during the creation of this report.
+
+### **Academic Papers & Conference Proceedings**
+
+* **"Incorporating Feature Penalty in Reinforcement Learning for Ludo Game"** 28  
+  * Focuses on a novel reward system that decouples rewards (Q-table) from risks (Penalty-table) to create a more robust agent.  
+* **"TD($\\lambda$) and Q-learning based Ludo players"** 6  
+  * A key paper that implements both Q-learning and the more advanced TD($\\lambda$) algorithm. It uses an "expert player" to bootstrap the training process.  
+* **"Developing Game AI for Classic Games Using Reinforcement Learning"** 8  
+  * Provides a useful analogy by comparing Q-learning (for Snake) with Proximal Policy Optimization (PPO) (for Mario), highlighting PPO's stability in high-variance environments.  
+* **"Multi-agent Ludo Game Collaborative Path Planning based on Markov Decision Process"** 3  
+  * Establishes the formal use of a Markov Decision Process (MDP) to model the Ludo game, specifically for *collaborative* (team-based) multi-agent scenarios.  
+* **"Multi-base Station Energy Cooperation Based on Nash Q-Learning Algorithm"** 6  
+  * An analogous paper from a different field that introduces Nash Q-Learning, the formal, game-theoretic approach to solving a true multi-agent competitive game.  
+* **"Cogito, Ergo Ludo: An Agent that Learns to Play by Reasoning and Planning"** 37  
+  * A forward-looking (and currently inaccessible) paper proposal suggesting the use of Large Language Models (LLMs) for symbolic reasoning in Ludo.  
+* **"Complexity analysis and playing strategies for Ludo and its variant race games"** 6  
+  * A related paper cited by the "TD($\\lambda$)" source, providing background on Ludo's formal complexity.  
+* **"Artificial Intelligence : Game Techniques Ludo-A Case Study"** 6  
+  * A paper that identifies Ludo as a case study for AI techniques, including Q-learning.
+
+### **GitHub Repositories & Codebases**
+
+* **rajtilakls2510/solving\_ludo1** 1  
+  * The most advanced implementation found; an "AlphaLudo" project using an AlphaZero-style asynchronous actor-learner architecture with Monte-Carlo Tree Search (MCTS).  
+* **MehranSangrasi/AI-Ludo** 14  
+  * A modern, clear implementation of a Deep Q-Network (DQN) that relies heavily on hand-crafted "reward shaping" to guide the agent.  
+* **andresc889/AILudoPlayer** 15  
+  * A critical "cautionary tale" project using Q-learning with a FANN neural network, which famously documents the agent "becoming dumber" due to training instability.  
+* **NDurocher/YARAL** 5  
+  * A foundational project demonstrating tabular Q-learning. It avoids the state-space explosion by using heavy *manual state abstraction* (e.g., "Safe," "Danger" states).  
+* **ManuOtel/ludo-AI** 16  
+  * A standard, modern DQN implementation using PyTorch, representing a stable approach to function approximation in Ludo.  
+* **datamllab/rlcard** 17  
+  * A comprehensive, professional library for applying various RL algorithms (including DQN and Deep Monte-Carlo) to card and board games.  
+* **suhasasumukh/AI-Ludo-Game** 39  
+  * A Ludo AI project implemented in JavaScript and HTML.
+
+### **Other Resources (Tutorials, Game Engines, Forums)**
+
+* **YouTube: "Q Learning... Implement Q Learning to teach the agent how to play the board game LUDO"** 40  
+  * A practical video tutorial for implementing a Q-learning agent for Ludo.  
+* **StackOverflow: "how to make an efficient ludo game playing ai-algorithm"** 2  
+  * A forum discussion where professionals confirm that MDPs and reinforcement learning are the standard, non-trivial approaches for this problem.  
+* **PythonGeeks: "Create Ludo Game Project in Python"** 42  
+  * A basic Python implementation of the Ludo game engine (non-AI), which can serve as an environment for an RL agent.  
+* **Data Flair: "Python Ludo Game Project"** 43  
+  * Another Pygame-based Ludo game engine implementation (non-AI) that can be adapted for RL experiments.
+
+#### **Works cited**
+
+1. rajtilakls2510/solving\_ludo1 \- GitHub, accessed November 12, 2025, [https://github.com/rajtilakls2510/solving\_ludo1](https://github.com/rajtilakls2510/solving_ludo1)  
+2. How To Make An Efficient Ludo Game Playing AI Algorithm \- Stack Overflow, accessed November 12, 2025, [https://stackoverflow.com/questions/5163806/how-to-make-an-efficient-ludo-game-playing-ai-algorithm](https://stackoverflow.com/questions/5163806/how-to-make-an-efficient-ludo-game-playing-ai-algorithm)  
+3. DARBHANGA \- Lingaya's Vidyapeeth, accessed November 12, 2025, [https://www.lingayasvidyapeeth.edu.in/sanmax/wp-content/uploads/2024/01/3.4.5-List-of-chapterbook-with-the-links-redirecting-to-the-source-website-min.pdf](https://www.lingayasvidyapeeth.edu.in/sanmax/wp-content/uploads/2024/01/3.4.5-List-of-chapterbook-with-the-links-redirecting-to-the-source-website-min.pdf)  
+4. Inventive Systems and Control, accessed November 12, 2025, [https://www.lingayasvidyapeeth.edu.in/naac-appeal/criteria-3/3.4.5/16\_Pradeep.pdf](https://www.lingayasvidyapeeth.edu.in/naac-appeal/criteria-3/3.4.5/16_Pradeep.pdf)  
+5. NDurocher/YARAL: Yet Another Reinforcement Learning ... \- GitHub, accessed November 12, 2025, [https://github.com/NDurocher/YARAL](https://github.com/NDurocher/YARAL)  
+6. TD(λ) and Q-learning based Ludo players | Semantic Scholar, accessed November 12, 2025, [https://www.semanticscholar.org/paper/TD(%CE%BB)-and-Q-learning-based-Ludo-players-Alhajry-Alvi/390001c3e2ce5603a7d74bbbe7844a1a1dca73d6](https://www.semanticscholar.org/paper/TD\(%CE%BB\)-and-Q-learning-based-Ludo-players-Alhajry-Alvi/390001c3e2ce5603a7d74bbbe7844a1a1dca73d6)  
+7. ‪Majed Alhajry‬ \- ‪Google Scholar‬, accessed November 12, 2025, [https://scholar.google.co.in/citations?user=ES7s4vgAAAAJ\&hl=de](https://scholar.google.co.in/citations?user=ES7s4vgAAAAJ&hl=de)  
+8. Comparison of reinforcement learning in game AI | Request PDF \- ResearchGate, accessed November 12, 2025, [https://www.researchgate.net/publication/368953443\_Comparison\_of\_reinforcement\_learning\_in\_game\_AI](https://www.researchgate.net/publication/368953443_Comparison_of_reinforcement_learning_in_game_AI)  
+9. Creating an Open-AI Gym like environment for Bangladeshi Game Shologuti using Unity3D and ML- Agents \- AGenCy Lab @ IUB, accessed November 12, 2025, [https://agencylab.github.io/pdfs/shologuti\_report.pdf](https://agencylab.github.io/pdfs/shologuti_report.pdf)  
+10. TD(λ) and Q-learning based Ludo players (2012) | Majed Alhajry | 5, accessed November 12, 2025, [https://scispace.com/papers/td-l-and-q-learning-based-ludo-players-3t5k2fbded](https://scispace.com/papers/td-l-and-q-learning-based-ludo-players-3t5k2fbded)  
+11. Informatics Institute of Technology In collaboration ... \- ResearchGate, accessed November 12, 2025, [https://www.researchgate.net/profile/Didula-Sa/publication/344280825\_Adaptive\_Agent\_for\_FPS\_Games\_using\_Reinforcement\_Learning/links/5f63057c4585154dbbd74cbb/Adaptive-Agent-for-FPS-Games-using-Reinforcement-Learning.pdf](https://www.researchgate.net/profile/Didula-Sa/publication/344280825_Adaptive_Agent_for_FPS_Games_using_Reinforcement_Learning/links/5f63057c4585154dbbd74cbb/Adaptive-Agent-for-FPS-Games-using-Reinforcement-Learning.pdf)  
+12. TD(λ) and Q-learning based Ludo players \- ResearchGate, accessed November 12, 2025, [https://www.researchgate.net/publication/261279306\_TDl\_and\_Q-learning\_based\_Ludo\_players](https://www.researchgate.net/publication/261279306_TDl_and_Q-learning_based_Ludo_players)  
+13. Performance of learning environments | Download ... \- ResearchGate, accessed November 12, 2025, [https://www.researchgate.net/figure/Performance-of-learning-environments\_tbl2\_220834907](https://www.researchgate.net/figure/Performance-of-learning-environments_tbl2_220834907)  
+14. MehranSangrasi/AI-Ludo: Ludo that uses AI \- GitHub, accessed November 12, 2025, [https://github.com/MehranSangrasi/AI-Ludo](https://github.com/MehranSangrasi/AI-Ludo)  
+15. andresc889/AILudoPlayer: An application of reinforcement learning to the Ludo board game. \- GitHub, accessed November 12, 2025, [https://github.com/andresc889/AILudoPlayer](https://github.com/andresc889/AILudoPlayer)  
+16. ManuOtel/ludo-AI: This is a simple example of how AI (more ... \- GitHub, accessed November 12, 2025, [https://github.com/ManuOtel/ludo-AI](https://github.com/ManuOtel/ludo-AI)  
+17. datamllab/rlcard: Reinforcement Learning / AI Bots in Card (Poker) Games \- Blackjack, Leduc, Texas, DouDizhu, Mahjong, UNO. \- GitHub, accessed November 12, 2025, [https://github.com/datamllab/rlcard](https://github.com/datamllab/rlcard)  
+18. Developing Game AI for Classic Games Using Reinforcement Learning \- IEEE Xplore, accessed November 12, 2025, [https://ieeexplore.ieee.org/iel8/10959336/10959735/10960023.pdf](https://ieeexplore.ieee.org/iel8/10959336/10959735/10960023.pdf)  
+19. Developing Game AI for Classic Games Using Reinforcement Learning \- IEEE Xplore, accessed November 12, 2025, [https://ieeexplore.ieee.org/document/10960023/](https://ieeexplore.ieee.org/document/10960023/)  
+20. Portfolio | Priyanshu Kumar Saw, accessed November 12, 2025, [https://priyanshu6268.github.io/Portfolio/](https://priyanshu6268.github.io/Portfolio/)  
+21. The application of reinforcement learning algorithms in intelligent games \- ResearchGate, accessed November 12, 2025, [https://www.researchgate.net/publication/379405794\_The\_application\_of\_reinforcement\_learning\_algorithms\_in\_intelligent\_games](https://www.researchgate.net/publication/379405794_The_application_of_reinforcement_learning_algorithms_in_intelligent_games)  
+22. 5G for Future Wireless Networks | springerprofessional.de, accessed November 12, 2025, [https://www.springerprofessional.de/5g-for-future-wireless-networks/15337218](https://www.springerprofessional.de/5g-for-future-wireless-networks/15337218)  
+23. Multi-base Station Energy Cooperation Based on Nash Q ... \- dblp, accessed November 12, 2025, [https://dblp.org/rec/conf/5gwn/LvLZGY17](https://dblp.org/rec/conf/5gwn/LvLZGY17)  
+24. Download: 5GWN2017\_Program.doc, accessed November 12, 2025, [https://5gwn.eai-conferences.org/2017/media/uploads/5GWN2017\_Program.doc](https://5gwn.eai-conferences.org/2017/media/uploads/5GWN2017_Program.doc)  
+25. Πίνακας περιεχομένων: 5G for Future Wireless Networks :: Find: η, accessed November 12, 2025, [https://find.library.upatras.gr/Record/978-3-319-72823-0/TOC](https://find.library.upatras.gr/Record/978-3-319-72823-0/TOC)  
+26. 5G for Future Wireless Networks \[ First ... \- REBIUN \- Baratz, accessed November 12, 2025, [https://rebiun.baratz.es/OpacDiscovery/public/catalog/detail/pdf?detailId=b2FpOmNlbGVicmF0aW9uOmVzLmJhcmF0ei5yZW4vMTk0Nzc5OTc](https://rebiun.baratz.es/OpacDiscovery/public/catalog/detail/pdf?detailId=b2FpOmNlbGVicmF0aW9uOmVzLmJhcmF0ei5yZW4vMTk0Nzc5OTc)  
+27. Yuanbin Yao's research works | North China Electric Power University and other places, accessed November 12, 2025, [https://www.researchgate.net/scientific-contributions/Yuanbin-Yao-2137172922](https://www.researchgate.net/scientific-contributions/Yuanbin-Yao-2137172922)  
+28. "Incorporating Feature Penalty in Reinforcement Learning for Ludo ..., accessed November 12, 2025, [https://zuscholars.zu.ac.ae/works/6379/](https://zuscholars.zu.ac.ae/works/6379/)  
+29. Incorporating Feature Penalty in Reinforcement Learning for Ludo, accessed November 12, 2025, [https://nchr-staging.elsevierpure.com/en/publications/incorporating-feature-penalty-in-reinforcement-learning-for-ludo-/fingerprints/](https://nchr-staging.elsevierpure.com/en/publications/incorporating-feature-penalty-in-reinforcement-learning-for-ludo-/fingerprints/)  
+30. Incorporating Feature Penalty in Reinforcement Learning for ... \- dblp, accessed November 12, 2025, [https://dblp.org/rec/conf/cist/TubaishatAASR23](https://dblp.org/rec/conf/cist/TubaishatAASR23)  
+31. Reinforcement Learning for Board Games: The Temporal Difference Algorithm, accessed November 12, 2025, [https://www.researchgate.net/publication/281203096\_Reinforcement\_Learning\_for\_Board\_Games\_The\_Temporal\_Difference\_Algorithm](https://www.researchgate.net/publication/281203096_Reinforcement_Learning_for_Board_Games_The_Temporal_Difference_Algorithm)  
+32. Complexity analysis and playing strategies for Ludo and its variant race games, accessed November 12, 2025, [https://www.researchgate.net/publication/224259871\_Complexity\_analysis\_and\_playing\_strategies\_for\_Ludo\_and\_its\_variant\_race\_games](https://www.researchgate.net/publication/224259871_Complexity_analysis_and_playing_strategies_for_Ludo_and_its_variant_race_games)  
+33. Reinforcement Learning in Games \- ResearchGate, accessed November 12, 2025, [https://www.researchgate.net/publication/290106209\_Reinforcement\_Learning\_in\_Games](https://www.researchgate.net/publication/290106209_Reinforcement_Learning_in_Games)  
+34. (PDF) Machine learning in digital games: A survey \- ResearchGate, accessed November 12, 2025, [https://www.researchgate.net/publication/220638059\_Machine\_learning\_in\_digital\_games\_A\_survey](https://www.researchgate.net/publication/220638059_Machine_learning_in_digital_games_A_survey)  
+35. accessed December 31, 1969, [https://ieeexplore.ieee.org/document/10409945](https://ieeexplore.ieee.org/document/10409945)  
+36. Incorporating Feature Penalty in Reinforcement Learning for Ludo Game \- IEEE Xplore, accessed November 12, 2025, [https://ieeexplore.ieee.org/iel7/10409867/10409868/10409945.pdf](https://ieeexplore.ieee.org/iel7/10409867/10409868/10409945.pdf)  
+37. accessed December 31, 1969, [https://arxiv.org/html/2509.25052v1](https://arxiv.org/html/2509.25052v1)  
+38. accessed December 31, 1969, [https://arxiv.org/abs/2509.25052](https://arxiv.org/abs/2509.25052)  
+39. suhasasumukh/AI-Ludo-Game \- GitHub, accessed November 12, 2025, [https://github.com/suhasasumukh/AI-Ludo-Game](https://github.com/suhasasumukh/AI-Ludo-Game)  
+40. Agent Learns to Play Ludo \- Q Learning Project in Reinforcement Learning \- YouTube, accessed November 12, 2025, [https://www.youtube.com/watch?v=piTnn3dJ9QE](https://www.youtube.com/watch?v=piTnn3dJ9QE)  
+41. master's thesis \- Open Universiteit research portal, accessed November 12, 2025, [https://research.ou.nl/files/46333643/Weij\_W\_van\_der\_IM9906\_SE\_AF\_scriptie\_Pure.pdf](https://research.ou.nl/files/46333643/Weij_W_van_der_IM9906_SE_AF_scriptie_Pure.pdf)  
+42. Create Ludo Game Project in Python \[Source Code Included\], accessed November 12, 2025, [https://pythongeeks.org/python-ludo-game-project/](https://pythongeeks.org/python-ludo-game-project/)  
+43. Develop Ludo Game in Python \[Source Code Included\] \- DataFlair, accessed November 12, 2025, [https://data-flair.training/blogs/python-ludo-game/](https://data-flair.training/blogs/python-ludo-game/)  
+44. Developing Game AI for Classic Games Using Reinforcement Learning | Request PDF, accessed November 12, 2025, [https://www.researchgate.net/publication/390782960\_Developing\_Game\_AI\_for\_Classic\_Games\_Using\_Reinforcement\_Learning](https://www.researchgate.net/publication/390782960_Developing_Game_AI_for_Classic_Games_Using_Reinforcement_Learning)  
+45. Artificial Intelligence: Game Techniques Ludo \- A Case Study \- Krishi Sanskriti, accessed November 12, 2025, [http://www.krishisanskriti.org/vol\_image/04Jul201512071860%20%20%20%20%20%20%20Veenus%20Chhabra%20%20%20%20%20%20%20%20%20%20549-553.pdf](http://www.krishisanskriti.org/vol_image/04Jul201512071860%20%20%20%20%20%20%20Veenus%20Chhabra%20%20%20%20%20%20%20%20%20%20549-553.pdf)  
+46. A Deep Reinforcement Learning Approach to The Ancient Indian Game \- Chowka Bhara, accessed November 12, 2025, [https://www.researchgate.net/publication/355274114\_A\_Deep\_Reinforcement\_Learning\_Approach\_to\_The\_Ancient\_Indian\_Game\_-\_Chowka\_Bhara](https://www.researchgate.net/publication/355274114_A_Deep_Reinforcement_Learning_Approach_to_The_Ancient_Indian_Game_-_Chowka_Bhara)  
+47. A Modeling Environment for Reinforcement Learning in Games \- ResearchGate, accessed November 12, 2025, [https://www.researchgate.net/publication/362458375\_A\_Modeling\_Environment\_for\_Reinforcement\_Learning\_in\_Games](https://www.researchgate.net/publication/362458375_A_Modeling_Environment_for_Reinforcement_Learning_in_Games)  
+48. A Systematic Review of AI-Driven Game Design and User Experience Research, accessed November 12, 2025, [https://www.researchgate.net/publication/395059979\_A\_Systematic\_Review\_of\_AI-Driven\_Game\_Design\_and\_User\_Experience\_Research](https://www.researchgate.net/publication/395059979_A_Systematic_Review_of_AI-Driven_Game_Design_and_User_Experience_Research)  
+49. Developing Game AI for Classic Games Using Reinforcement, accessed November 12, 2025, [https://www.semanticscholar.org/paper/Developing-Game-AI-for-Classic-Games-Using-Learning-Gupta-Nancy/499a16db664bf35ab87d8fd35c4afec7771fa923](https://www.semanticscholar.org/paper/Developing-Game-AI-for-Classic-Games-Using-Learning-Gupta-Nancy/499a16db664bf35ab87d8fd35c4afec7771fa923)  
+50. accessed December 31, 1969, [https://github.com/andresc889/AILudoPlayer?tab=readme-ov-file](https://github.com/andresc889/AILudoPlayer?tab=readme-ov-file)

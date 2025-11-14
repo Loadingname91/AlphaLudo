@@ -1,0 +1,23 @@
+# Core dependencies
+numpy>=1.24.0
+ludopy>=1.3.0
+
+# Logging and experiment tracking (optional)
+# tensorboard>=2.13.0
+# wandb>=0.15.0
+
+# Analysis dependencies (for offline analysis, not for training loop)
+# pandas>=2.0.0
+# matplotlib>=3.7.0  # For offline analysis plots (not used in training loop)
+# seaborn>=0.12.0
+
+# Visualization (optional - for real-time board rendering)
+opencv-python>=4.8.0  # For real-time visualization
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Utilities
+pyyaml>=6.0
+tqdm>=4.66.0  # Progress bars and time estimation
