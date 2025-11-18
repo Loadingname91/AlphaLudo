@@ -86,7 +86,15 @@ The project will be implemented in phases, with each new agent representing a st
     - **Agent:** `RandomAgent`
         
     - **Purpose:** Validate the `Trainer`, `LudoEnv`, and `MetricsTracker`. Establishes the ~25% win-rate baseline.
+
+- **Phase 0.5: Rule Based Heuristic Agent**
+    
+    - **Agent:** `RuleBasedHeuristicAgent`
         
+    - **Purpose:** To validate the `Trainer`, `LudoEnv`, and `MetricsTracker`. SHould ideally be able to beat the `RandomAgent` by a significant margin.
+
+    - **Key Challenge**: Comming with a heuristic that is not too complex, but still able to beat the `RandomAgent` by a significant margin.
+
 - **Phase 1: Tabular Q-Learning**
     
     - **Agent:** `TabularQAgent`
