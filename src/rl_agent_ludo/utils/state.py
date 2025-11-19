@@ -5,7 +5,7 @@ Immutable dataclass that passes all necessary state information from LudoEnv to 
 """
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 import numpy as np
 
 
@@ -38,3 +38,7 @@ class State:
         
         if not isinstance(self.abstract_state, tuple):
             raise TypeError(f"abstract_state must be tuple, got {type(self.abstract_state)}")
+
+    player_pieces : List[int] 
+    enemy_pieces : List[int]
+    movable_pieces : Optional[List[int]] = None

@@ -9,7 +9,7 @@ import argparse
 import sys
 import os
 from pathlib import Path
-
+from utils.visualizer import visualize_board_indices
 # Add src to path
 src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
@@ -23,6 +23,35 @@ from rl_agent_ludo.utils.config_loader import load_config
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Train RL Agent for Ludo')
+    parser.add_argument(
+        '--visualize',
+        action='store_true',
+        help='Visualize the board'
+    )
+    parser.add_argument(
+        '--show-render',
+        type=lambda x: x.lower() == 'true',
+        default=True,
+        help='Show the render of the board'
+    )
+    parser.add_argument(
+        '--save-path',
+        type=str,
+        default='assets/board.png',
+        help='Path to save the board visualization'
+    )
+    parser.add_argument(
+        '--show-indices',
+       type=lambda x: x.lower() == 'true',
+       default=True,
+        help='Show the legend on the board'
+    )
+    parser.add_argument(
+        '--show-legend',
+        type=lambda x: x.lower() == 'true',
+        default=True,
+        help='Show the legend on the board'
+    )
     parser.add_argument(
         '--config',
         type=str,
@@ -41,9 +70,16 @@ def main():
         default=None,
         help='Override number of episodes from config'
     )
-    
     args = parser.parse_args()
-    
+
+    if args.visualize:
+        visualize_board_indices(
+            save_path=args.save_path,
+            show=args.show_render, 
+            show_indices=args.show_indices,
+            show_legend=args.show_legend
+            )
+        sys.exit(0)
     # Load configuration
     try:
         config = load_config(args.config)
