@@ -51,8 +51,18 @@ class MetricsTracker:
         self.total_steps = 0
         self.wins = 0
         self.losses = 0
+        
+        # Optional score debugging lines (human-readable, space-efficient)
+        self.score_debug_lines: List[str] = []
     
-    def log_metrics(self, state, action: int, reward: float, info: Dict[str, Any]) -> None:
+    def log_metrics(
+        self,
+        state,
+        action: int,
+        reward: float,
+        info: Dict[str, Any],
+        score_debug: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """
         Log metrics for a single step.
         
@@ -75,6 +85,19 @@ class MetricsTracker:
         
         # Add any additional info
         step_data.update({k: v for k, v in info.items() if self._is_serializable(v)})
+
+        # Optionally record detailed score debug information from agent
+        # We keep this in a separate, human-readable log instead of bloating JSON.
+        if score_debug is not None:
+            line = self._format_score_debug_line(
+                episode=self.current_episode,
+                step=self.current_step,
+                state=state,
+                action=action,
+                reward=reward,
+                score_debug=score_debug,
+            )
+            self.score_debug_lines.append(line)
         
         # Store step data
         self.steps.append(step_data)
@@ -177,15 +200,19 @@ class MetricsTracker:
                 writer.writerows(self.episodes)
             saved_files['episodes_csv'] = episodes_csv_path
         
-        # Save steps to JSON (if collected)
-        if self.steps:
-            steps_json_path = os.path.join(
+        # NOTE: We intentionally skip saving per-step metrics to JSON to keep
+        # disk usage manageable. Detailed step/score debugging is handled via
+        # compact .log files instead.
+        
+        # Save score debug log (if any)
+        if self.score_debug_lines:
+            score_log_path = os.path.join(
                 self.output_dir,
-                f"{self.experiment_name}_steps.json"
+                f"{self.experiment_name}_score_debug.log"
             )
-            with open(steps_json_path, 'w') as f:
-                json.dump(self.steps, f, indent=2)
-            saved_files['steps_json'] = steps_json_path
+            with open(score_log_path, 'w') as f:
+                f.writelines(self.score_debug_lines)
+            saved_files['score_debug_log'] = score_log_path
         
         return saved_files
     
@@ -243,3 +270,81 @@ class MetricsTracker:
         self.total_steps = 0
         self.wins = 0
         self.losses = 0
+        self.score_debug_lines = []
+
+    def save_partial_metrics(self, suffix: str) -> Dict[str, str]:
+        """
+        Save a snapshot of current metrics to disk without resetting internal state.
+
+        Useful for checkpoint-style logging (e.g., every N episodes) so that large
+        runs can be inspected incrementally.
+
+        Args:
+            suffix: String suffix to distinguish this snapshot
+
+        Returns:
+            Dictionary with filepaths of saved files for this snapshot.
+        """
+        saved_files: Dict[str, str] = {}
+
+        # Episodes snapshot
+        episodes_json_path = os.path.join(
+            self.output_dir,
+            f"{self.experiment_name}_episodes_{suffix}.json"
+        )
+        with open(episodes_json_path, 'w') as f:
+            json.dump(self.episodes, f, indent=2)
+        saved_files['episodes_json'] = episodes_json_path
+
+        # Score debug snapshot (if any)
+        if self.score_debug_lines:
+            score_log_path = os.path.join(
+                self.output_dir,
+                f"{self.experiment_name}_score_debug_{suffix}.log"
+            )
+            with open(score_log_path, 'w') as f:
+                f.writelines(self.score_debug_lines)
+            saved_files['score_debug_log'] = score_log_path
+
+        return saved_files
+
+    # -------------------------------------------------------------------------
+    # Internal helpers
+    # -------------------------------------------------------------------------
+
+    def _format_score_debug_line(
+        self,
+        episode: int,
+        step: int,
+        state,
+        action: int,
+        reward: float,
+        score_debug: Dict[str, Any],
+    ) -> str:
+        """
+        Convert score_debug information into a compact, human-readable log line.
+
+        This keeps disk usage low while still exposing the key scoring signal.
+        """
+        components = score_debug.get('components', {}) or {}
+        # Only log non-zero components to keep lines short
+        non_zero_components = {
+            name: value for name, value in components.items()
+            if isinstance(value, (int, float)) and value != 0
+        }
+
+        parts = [
+            f"ep={episode}",
+            f"step={step}",
+            f"dice={score_debug.get('dice_roll')}",
+            f"piece={score_debug.get('piece_idx')}",
+            f"action={int(action)}",
+            f"reward={float(reward)}",
+            f"total={score_debug.get('total_score')}",
+        ]
+
+        if non_zero_components:
+            comp_str = ", ".join(f"{k}={v}" for k, v in non_zero_components.items())
+            parts.append(f"components=[{comp_str}]")
+
+        return " ".join(str(p) for p in parts if p is not None) + "\n"

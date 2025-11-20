@@ -55,11 +55,14 @@ class Trainer:
         self.seed = config['training'].get('seed', None)
         self.log_interval = config['training'].get('log_interval', 100)
         self.save_interval = config['training'].get('save_interval', None)
-        
-        # Metrics tracker
+
+        # Metrics tracker (per-run, timestamped output directory)
         experiment_name = config['experiment'].get('name', 'default_experiment')
-        output_dir = config['experiment'].get('output_dir', 'results')
-        self.metrics_tracker = MetricsTracker(experiment_name, output_dir)
+        base_output_dir = config['experiment'].get('output_dir', 'results')
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        run_output_dir = os.path.join(base_output_dir, f"{experiment_name}_{timestamp}")
+        self.metrics_tracker = MetricsTracker(experiment_name, run_output_dir)
+        self.run_output_dir = run_output_dir  # optional: for logging/introspection
         
         # Training state
         self.episode_count = 0
@@ -87,10 +90,10 @@ class Trainer:
         # Select training loop based on agent type
         if self.agent.is_on_policy:
             self.logger.info("Using on-policy training loop")
-            results = self._run_on_policy_loop()
+            results = self.run_on_policy_loop()
         else:
             self.logger.info("Using off-policy training loop")
-            results = self._run_off_policy_loop()
+            results = self.run_off_policy_loop()
         
         # Save final metrics
         saved_files = self.metrics_tracker.save_metrics()
@@ -109,7 +112,7 @@ class Trainer:
         
         return results
     
-    def _run_on_policy_loop(self) -> Dict[str, Any]:
+    def run_on_policy_loop(self) -> Dict[str, Any]:
         """
         On-policy training loop (for PPO, MCTS).
         
@@ -150,7 +153,13 @@ class Trainer:
                 if is_learning_agent_turn:
                     # Learning agent's turn - get action from agent
                     action = self.agent.act(state)
-                    
+
+                    # Optional score debugging information from agent
+                    score_debug = None
+                    if self.config['training'].get('enable_score_debug', False) and \
+                            getattr(self.agent, 'supports_score_debug', False):
+                        score_debug = self.agent.get_last_score_debug()
+
                     # Environment step
                     next_state, reward, done, info = self.env.step(action)
                     
@@ -165,8 +174,8 @@ class Trainer:
                     }
                     rollout_buffer.append(experience)
                     
-                    # Log metrics
-                    self.metrics_tracker.log_metrics(state, action, reward, info)
+                    # Log metrics (including optional score breakdown)
+                    self.metrics_tracker.log_metrics(state, action, reward, info, score_debug=score_debug)
                     episode_rewards.append(reward)
                     
                     # Update state
@@ -256,7 +265,7 @@ class Trainer:
             'mode': 'on_policy'
         }
     
-    def _run_off_policy_loop(self) -> Dict[str, Any]:
+    def run_off_policy_loop(self) -> Dict[str, Any]:
         """
         Off-policy training loop (for Q-Learning, DQN, Random).
         
@@ -295,7 +304,13 @@ class Trainer:
                 if is_learning_agent_turn:
                     # Learning agent's turn - get action from agent
                     action = self.agent.act(state)
-                    
+
+                    # Optional score debugging information from agent
+                    score_debug = None
+                    if self.config['training'].get('enable_score_debug', False) and \
+                            getattr(self.agent, 'supports_score_debug', False):
+                        score_debug = self.agent.get_last_score_debug()
+
                     # Environment step
                     next_state, reward, done, info = self.env.step(action)
                     
@@ -307,8 +322,8 @@ class Trainer:
                     if self.agent.needs_replay_learning:
                         self.agent.learn_from_replay()
                     
-                    # Log metrics
-                    self.metrics_tracker.log_metrics(state, action, reward, info)
+                    # Log metrics (including optional score breakdown)
+                    self.metrics_tracker.log_metrics(state, action, reward, info, score_debug=score_debug)
                     episode_rewards.append(reward)
                     
                     # Update state
@@ -389,6 +404,11 @@ class Trainer:
             # Save checkpoint (if configured)
             if self.save_interval and (episode + 1) % self.save_interval == 0:
                 self._save_checkpoint(episode + 1)
+
+                # Optionally save a partial snapshot of metrics (including score_debug)
+                if self.config['training'].get('enable_score_debug', False):
+                    suffix = f"ep_{episode + 1}"
+                    self.metrics_tracker.save_partial_metrics(suffix)
         
         pbar.close()
         

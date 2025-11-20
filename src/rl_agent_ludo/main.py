@@ -75,9 +75,9 @@ def main():
     if args.visualize:
         visualize_board_indices(
             save_path=args.save_path,
-            show=args.show_render, 
-            show_indices=args.show_indices,
-            show_legend=args.show_legend
+            show_track_indices=True,
+            show_tile_coords=True,
+            show_legend=True
             )
         sys.exit(0)
     # Load configuration

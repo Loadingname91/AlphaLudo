@@ -37,6 +37,27 @@ class Agent(ABC):
             True if agent needs experience replay (Q-Learning, DQN), False otherwise
         """
         pass
+
+    # ---- Optional debugging hooks -------------------------------------------------
+
+    @property
+    def supports_score_debug(self) -> bool:
+        """
+        Whether this agent exposes detailed scoring debug information.
+
+        Default: False. Override in agents that can provide score breakdowns.
+        """
+        return False
+
+    def get_last_score_debug(self) -> Dict[str, Any] | None:
+        """
+        Get debug information for the last action selection, if available.
+
+        Default implementation returns None. Agents that support score debugging
+        can override this to return a JSON-serializable dictionary with
+        per-move score components and context.
+        """
+        return None
     
     @abstractmethod
     def act(self, state: State) -> int:

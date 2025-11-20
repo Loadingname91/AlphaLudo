@@ -24,7 +24,11 @@ class State:
     abstract_state: tuple    # For tabular methods (hashable)
     valid_moves: List[int]   # List of valid action indices
     dice_roll: int           # Current dice roll (1-6)
-    
+
+    player_pieces : List[int] 
+    enemy_pieces : List[int]
+    movable_pieces : Optional[List[int]] = None
+
     def __post_init__(self):
         """Validate state after initialization."""
         if self.dice_roll < 1 or self.dice_roll > 6:
@@ -38,7 +42,3 @@ class State:
         
         if not isinstance(self.abstract_state, tuple):
             raise TypeError(f"abstract_state must be tuple, got {type(self.abstract_state)}")
-
-    player_pieces : List[int] 
-    enemy_pieces : List[int]
-    movable_pieces : Optional[List[int]] = None

@@ -25,8 +25,7 @@ class LudoEnv:
     """
     Ludo environment wrapper around ludopy library.
     
-    Provides Gym-like interface: reset(), step(action)
-    Handles state abstraction, opponent agents, and reward shaping.
+    Provides a clean API for the RL agent to interact with the environment.
     """
     
     def __init__(
@@ -82,144 +81,6 @@ class LudoEnv:
             self.window_name = f"Ludo - Player {self.player_id}"
             self.render_scale = 2.0  # Scale factor for better visibility
     
-    def set_episode(self, episode_number: int) -> None:
-        """
-        Set current episode number (for visualization).
-        
-        Args:
-            episode_number: Current episode number
-        """
-        self.current_episode = episode_number
-    
-    def reset(self) -> State:
-        """
-        Reset environment and return initial state.
-        
-        Starting player rotates across episodes to reduce first-player bias:
-        - Episode 0: Player 0 starts
-        - Episode 1: Player 1 starts
-        - Episode 2: Player 2 starts
-        - Episode 3: Player 3 starts
-        - Episode 4: Player 0 starts (cycles)
-        
-        Returns:
-            Initial State object
-        """
-        # Initialize new game (ludopy only takes ghost_players parameter)
-        # Use seed + episode_number to ensure each episode is different but reproducible
-        if self.seed is not None:
-            import numpy as np
-            episode_seed = self.seed + self.current_episode
-            np.random.seed(episode_seed)
-            import random
-            random.seed(episode_seed)
-        else:
-            # No seed - use fully random (not reproducible)
-            pass
-        
-        self.game = ludopy.Game(ghost_players=[])
-        self.game.reset()  # Reset game state
-        
-        # Rotate starting player to reduce first-player bias
-        # Episode 0: player 0 starts, Episode 1: player 1 starts, etc.
-        starting_player = self.current_episode % 4
-        self.game.current_player = starting_player
-        
-        self.episode_step = 0
-        self.done = False
-        
-        # Get initial observation - ludopy requires get_observation() first
-        obs, self.current_player = self.game.get_observation()
-        dice, move_pieces, player_pieces, enemy_pieces, player_is_winner, there_is_winner = obs
-        
-        # Store current observation for state building
-        self.current_obs = obs
-        self.current_dice = dice
-        self.current_move_pieces = list(move_pieces) if len(move_pieces) > 0 else []
-        
-        # Get initial state
-        state = self._get_observation()
-        self.last_state = state
-        
-        # Render initial state if enabled
-        if self.render:
-            self._render()
-        
-        return state
-    
-    def step(self, action: int) -> Tuple[State, float, bool, Dict]:
-        """
-        Execute one step in the environment - ONE game turn.
-        
-        Executes action for the current player (learning agent if it's their turn,
-        opponent automatically if it's their turn).
-        
-        Args:
-            action: Action index (piece to move). Only used if it's learning agent's turn.
-                   Ignored for opponent turns (they play automatically).
-        
-        Returns:
-            Tuple of (next_state, reward, done, info):
-                - next_state: Next State object (for whoever's turn it is now)
-                - reward: Reward value (float) - only non-zero on learning agent's actions
-                - done: Whether episode is finished (bool)
-                - info: Additional information dictionary with 'current_player' indicating whose turn it is
-        """
-        if self.game is None:
-            raise RuntimeError("Environment not reset. Call reset() first.")
-        
-        if self.done:
-            raise RuntimeError("Episode is done. Call reset() to start a new episode.")
-        
-        game_events = {}
-        
-        # Track whose turn it was BEFORE executing action
-        was_learning_agent_turn = (self.current_player == self.player_id)
-        
-        # Check if it's learning agent's turn or opponent's turn
-        if was_learning_agent_turn:
-            # Learning agent's turn - execute their action
-            game_events.update(self._handle_learning_agent_turn(action))
-        else:
-            # Opponent's turn - play automatically (action parameter ignored)
-            game_events.update(self._handle_opponent_turn())
-        
-        # After executing action, advance to next observation
-        self._advance_to_next_observation()
-        
-        # Check if game ended
-        done, winners_info = self._check_game_ended()
-        self.done = done
-        
-        # Build info dictionary
-        info = self._build_info_dict(game_events, winners_info)
-        info['episode_step'] = self.episode_step
-        info['current_player'] = self.current_player
-        info['is_learning_agent_turn'] = (self.current_player == self.player_id)
-        info['learning_agent_player_id'] = self.player_id  # Always include learning agent ID
-        
-        # Calculate reward (only for learning agent's actions, otherwise 0)
-        if was_learning_agent_turn or done:
-            # Reward for learning agent's action, or final reward if game ended
-            reward, ila_components = self.reward_shaper.get_reward(game_events)
-            info.update(ila_components)
-        else:
-            # No reward for opponent turns (learning agent doesn't learn from opponent actions)
-            reward = 0.0
-        
-        # Increment step counter
-        self.episode_step += 1
-        
-        # Get next state (always return valid state, even if done)
-        next_state = self._get_observation()
-        self.last_state = next_state
-        
-        # Render if enabled
-        if self.render:
-            self._render()
-        
-        return next_state, reward, self.done, info
-    
     def _advance_to_next_observation(self) -> None:
         """
         Advance to the next observation after an action has been executed.
@@ -243,7 +104,7 @@ class LudoEnv:
                 self.done = True
             else:
                 raise
-    
+
     def _handle_learning_agent_turn(self, action: int) -> Dict:
         """
         Handle learning agent's turn - execute their action.
@@ -267,7 +128,7 @@ class LudoEnv:
         
         # Execute action (calls answer_observation which advances game)
         return self._execute_action(piece_to_move)
-    
+
     def _handle_opponent_turn(self) -> Dict:
         """
         Handle opponent's turn - execute opponent's action.
@@ -347,15 +208,6 @@ class LudoEnv:
         
         return info
     
-    def get_valid_actions(self) -> List[int]:
-        """
-        Get list of valid action indices for current player.
-        
-        Returns:
-            List of valid action indices
-        """
-        return self._get_valid_actions()
-    
     def _get_valid_actions(self) -> List[int]:
         """Internal method to get valid actions."""
         if self.game is None:
@@ -423,23 +275,35 @@ class LudoEnv:
         if self.game is None:
             raise RuntimeError("Game not initialized. Call reset() first.")
         
-        # Get game state from ludopy
-        # pieces is list of 4 lists (one per player), each with 4 piece positions
+        # 1. EXTRACT RAW DATA from Ludopy
+        # 'pieces' = Your 4 pieces. 'enemy_pieces' = 3 lists of their pieces.
         pieces, enemy_pieces = self.game.get_pieces(self.current_player)
         
-        # Get dice roll from current observation
+        # Get dice roll (stored from the last game step)
         dice_roll = self.current_dice if hasattr(self, 'current_dice') else 1
         
-        # Create state abstractions
+        # 2. PROCESS DATA (Helper methods)
         full_vector = self._get_full_state_vector(pieces, enemy_pieces, dice_roll)
         abstract_state = self._get_abstract_state(pieces, enemy_pieces, dice_roll)
         valid_moves = self._get_valid_actions()
         
+        # 3. POPULATE MOVABLE PIECES
+        # This matches the 'action index' to the 'piece index' (0-3)
+        movable_pieces = (
+            list(self.current_move_pieces)
+            if hasattr(self, "current_move_pieces") and self.current_move_pieces is not None
+            else None
+        )
+        
+        # 4. RETURN THE POPULATED OBJECT
         return State(
             full_vector=full_vector,
             abstract_state=abstract_state,
             valid_moves=valid_moves,
-            dice_roll=dice_roll
+            dice_roll=dice_roll,
+            movable_pieces=movable_pieces,   # Agent uses this to know WHICH piece moves
+            player_pieces=list(pieces),      # Agent uses this for physics (Analyzer)
+            enemy_pieces=[list(ep) for ep in enemy_pieces], #  Agent uses this for threats
         )
     
     def _get_full_state_vector(self, player_pieces: List[int], enemy_pieces: List[List[int]], dice_roll: int) -> np.ndarray:
@@ -638,6 +502,154 @@ class LudoEnv:
         except Exception as e:
             # If rendering fails, just continue without visualization
             print(f"Warning: Rendering failed: {e}")
+
+    def set_episode(self, episode_number: int) -> None:
+        """
+        Set current episode number (for visualization).
+        
+        Args:
+            episode_number: Current episode number
+        """
+        self.current_episode = episode_number
+    
+    def reset(self) -> State:
+        """
+        Reset environment and return initial state.
+        
+        Starting player rotates across episodes to reduce first-player bias:
+        - Episode 0: Player 0 starts
+        - Episode 1: Player 1 starts
+        - Episode 2: Player 2 starts
+        - Episode 3: Player 3 starts
+        - Episode 4: Player 0 starts (cycles)
+        
+        Returns:
+            Initial State object
+        """
+        # Initialize new game (ludopy only takes ghost_players parameter)
+        # Use seed + episode_number to ensure each episode is different but reproducible
+        if self.seed is not None:
+            import numpy as np
+            episode_seed = self.seed + self.current_episode
+            np.random.seed(episode_seed)
+            import random
+            random.seed(episode_seed)
+        else:
+            # No seed - use fully random (not reproducible)
+            pass
+        
+        self.game = ludopy.Game(ghost_players=[])
+        self.game.reset()  # Reset game state
+        
+        # Rotate starting player to reduce first-player bias
+        # Episode 0: player 0 starts, Episode 1: player 1 starts, etc.
+        starting_player = self.current_episode % 4
+        self.game.current_player = starting_player
+        
+        self.episode_step = 0
+        self.done = False
+        
+        # Get initial observation - ludopy requires get_observation() first
+        obs, self.current_player = self.game.get_observation()
+        dice, move_pieces, player_pieces, enemy_pieces, player_is_winner, there_is_winner = obs
+        
+        # Store current observation for state building
+        self.current_obs = obs
+        self.current_dice = dice
+        self.current_move_pieces = list(move_pieces) if len(move_pieces) > 0 else []
+        
+        # Get initial state
+        state = self._get_observation()
+        self.last_state = state
+        
+        # Render initial state if enabled
+        if self.render:
+            self._render()
+        
+        return state
+    
+    def step(self, action: int) -> Tuple[State, float, bool, Dict]:
+        """
+        Execute one step in the environment - ONE game turn.
+        
+        Executes action for the current player (learning agent if it's their turn,
+        opponent automatically if it's their turn).
+        
+        Args:
+            action: Action index (piece to move). Only used if it's learning agent's turn.
+                   Ignored for opponent turns (they play automatically).
+        
+        Returns:
+            Tuple of (next_state, reward, done, info):
+                - next_state: Next State object (for whoever's turn it is now)
+                - reward: Reward value (float) - only non-zero on learning agent's actions
+                - done: Whether episode is finished (bool)
+                - info: Additional information dictionary with 'current_player' indicating whose turn it is
+        """
+        if self.game is None:
+            raise RuntimeError("Environment not reset. Call reset() first.")
+        
+        if self.done:
+            raise RuntimeError("Episode is done. Call reset() to start a new episode.")
+        
+        game_events = {}
+        
+        # Track whose turn it was BEFORE executing action
+        was_learning_agent_turn = (self.current_player == self.player_id)
+        
+        # Check if it's learning agent's turn or opponent's turn
+        if was_learning_agent_turn:
+            # Learning agent's turn - execute their action
+            game_events.update(self._handle_learning_agent_turn(action))
+        else:
+            # Opponent's turn - play automatically (action parameter ignored)
+            game_events.update(self._handle_opponent_turn())
+        
+        # After executing action, advance to next observation
+        self._advance_to_next_observation()
+        
+        # Check if game ended
+        done, winners_info = self._check_game_ended()
+        self.done = done
+        
+        # Build info dictionary
+        info = self._build_info_dict(game_events, winners_info)
+        info['episode_step'] = self.episode_step
+        info['current_player'] = self.current_player
+        info['is_learning_agent_turn'] = (self.current_player == self.player_id)
+        info['learning_agent_player_id'] = self.player_id  # Always include learning agent ID
+        
+        # Calculate reward (only for learning agent's actions, otherwise 0)
+        if was_learning_agent_turn or done:
+            # Reward for learning agent's action, or final reward if game ended
+            reward, ila_components = self.reward_shaper.get_reward(game_events)
+            info.update(ila_components)
+        else:
+            # No reward for opponent turns (learning agent doesn't learn from opponent actions)
+            reward = 0.0
+        
+        # Increment step counter
+        self.episode_step += 1
+        
+        # Get next state (always return valid state, even if done)
+        next_state = self._get_observation()
+        self.last_state = next_state
+        
+        # Render if enabled
+        if self.render:
+            self._render()
+        
+        return next_state, reward, self.done, info
+    
+    
+    def get_valid_actions(self) -> List[int]:
+        """
+        Get list of valid action indices for current player.
+        
+        Returns:
+            List of valid action indices
+        """
+        return self._get_valid_actions()
     
     def close(self) -> None:
         """

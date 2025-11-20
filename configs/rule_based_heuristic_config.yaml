@@ -4,14 +4,14 @@
 
 # Experiment settings
 experiment:
-  name: "random_agent_baseline"
+  name: "rule_based_heuristic"
   seed: 45
   output_dir: "results"
 
 # Agent configuration
 agent:
-  type: "random"
-  # Random agent specific config
+  type: "rule_based_heuristic"
+  # Rule-based heuristic agent specific config
   seed: 45
   debug_scores: true
 
@@ -26,7 +26,7 @@ environment:
 
 # Training configuration
 training:
-  num_episodes: 1000
+  num_episodes: 200
   max_steps_per_episode: 10000
   log_interval: 100  # Log every N episodes
   save_interval: 100  # Save checkpoint every N episodes (null = never)

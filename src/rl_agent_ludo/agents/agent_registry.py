@@ -5,6 +5,8 @@ Factory for creating agent instances from configuration.
 """
 
 from typing import Dict, Any, Optional
+
+from rl_agent_ludo.agents.rule_based_heuristic_agent import RuleBasedHeuristicAgent
 from .base_agent import Agent
 from .random_agent import RandomAgent
 
@@ -19,6 +21,7 @@ class AgentRegistry:
     # Registry of available agent types
     _agent_classes: Dict[str, type] = {
         'random': RandomAgent,
+        'rule_based_heuristic': RuleBasedHeuristicAgent
         # Rule based  agent : to be implemented in Phase 1
         # 'tabular_q': TabularQAgent,  # To be implemented in Phase 1
         # 'td': TDAgent,  # To be implemented in Phase 1.5
