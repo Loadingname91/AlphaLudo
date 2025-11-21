@@ -258,3 +258,16 @@ class LudoBoardAnalyser:
             if 1 <= (pos-spawn) <=6:
                 return True 
         return False 
+
+
+    @staticmethod
+    def count_pieces_at_home(player_pieces:List[int])->int:
+        return sum(1 for p in player_pieces if p==LudoBoardAnalyser.HOME)
+
+    @staticmethod
+    def count_pieces_at_goal(player_pieces:List[int])->int:
+        return sum(1 for p in player_pieces if p==LudoBoardAnalyser.GOAL)
+
+    @staticmethod
+    def count_pieces_on_goal_path(player_pieces:List[int])->int:
+        return sum(1 for p in player_pieces if p in HOME_STRETCH_INDEXS)

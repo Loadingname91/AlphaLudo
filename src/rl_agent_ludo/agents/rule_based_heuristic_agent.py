@@ -103,6 +103,60 @@ class RuleBasedHeuristicAgent(Agent):
         # A move breaks the blockade if the piece moves AND the target is not the same piece's location.
         return next_pos != current_pos
         
+    def _get_game_phase(self,player_pieces:List[int],enemy_pieces:List[List[int]]) -> str:
+        """
+        Determine the current game phase.
+        """
+        pieces_at_home = LudoBoardAnalyser.count_pieces_at_home(player_pieces)
+        pieces_on_goal_path = LudoBoardAnalyser.count_pieces_on_goal_path(player_pieces)
+        pieces_finished = LudoBoardAnalyser.count_pieces_at_goal(player_pieces)
+
+        # 1. Important if any enemy is close to winnnign (ex: 2+ pieces in goal)
+        # we must become aggresive
+        for opp in enemy_pieces:
+            if LudoBoardAnalyser.count_pieces_at_goal(opp)>=2:
+                return self.PHASE_CRITICAL
+        
+        # 2. Openning : we have 2 or more pieces stuck at home
+        # priority : get them out
+        if pieces_at_home>=2:
+            return self.PHASE_OPENING
+        
+        # 3. Closing : We have pieces in the home strecth or finished 
+        # Priority : push them to the goal 
+        if pieces_on_goal_path + pieces_finished >=2:
+            return self.PHASE_CLOSING
+        
+        # 4. Midgame : standard play
+        return self.PHASE_MIDGAME
+
+    
+    def _get_contextual_multipler(self, game_phase: str, rule_name: str) -> float:
+        """
+        Returns a multiplier to boost specific rules based on the phase.
+        """
+        # OPENING: Desperately need to get pieces out.
+        if game_phase == self.PHASE_OPENING:
+            if rule_name == 'GET_OUT_OF_HOME':
+                return 5.0  # 7,000 -> 35,000 (Almost as high as a capture)
+        
+        # CLOSING: Focus on finishing the game.
+        if game_phase == self.PHASE_CLOSING:
+            if rule_name == 'HOME_BASE_PROGRESS':
+                return 5.0  # 10,000 -> 50,000 (Equal to capture/flee)
+            if rule_name == 'WIN_MOVE':
+                return 2.0  # Ensure nothing overrides winning
+        
+        # CRITICAL: Stop the leader!
+        if game_phase == self.PHASE_CRITICAL:
+            if rule_name == 'CAPTURE_MOVE':
+                return 1.5  # 50,000 -> 75,000 (Prioritize killing)
+            if rule_name == 'BLOACKADE_CLUSTER':
+                return 2.0  # Block them aggressively
+        
+        # Default: No multiplier
+        return 1.0
+
     
     def _calculate_move_score(self, state: State, piece_idx: int, dice_roll: int) -> float:
         """
@@ -111,12 +165,8 @@ class RuleBasedHeuristicAgent(Agent):
         Layer 2 strategy
         """
         current_pos = state.player_pieces[piece_idx]
-
-        # simulation : ask the board analyser where we will land
-        next_pos = LudoBoardAnalyser.simulate_move(current_pos,dice_roll)
-
-        # priority check based on the best valid move from the current pos
-
+        next_pos = LudoBoardAnalyser.simulate_move(current_pos, dice_roll)
+        
         # Prepare per-component breakdown for debugging
         components = {
             'win_move': 0.0,
@@ -134,85 +184,90 @@ class RuleBasedHeuristicAgent(Agent):
             'blockade_break_penalty': 0.0,
         }
 
-        # Compute probabilistic risk for landing on next_pos.
-        # This is applied to ALL moves (not just "normal" moves), so that
-        # captures / blockades into extremely dangerous tiles are discouraged.
+        # 1. Identify the Priority Rule Triggered
+        base_score = 0.0
+        rule_name = "NORMAL"
+
+        if LudoBoardAnalyser.is_at_goal(next_pos):
+            base_score = float(self.WIN_MOVE)
+            rule_name = 'WIN_MOVE'
+        elif LudoBoardAnalyser.can_capture(current_pos, dice_roll, state.enemy_pieces):
+            base_score = float(self.CAPTURE_MOVE)
+            rule_name = 'CAPTURE_MOVE'
+        elif LudoBoardAnalyser.is_threatened(current_pos, state.enemy_pieces) and \
+             (LudoBoardAnalyser.is_safe_position(next_pos) or not LudoBoardAnalyser.is_threatened(next_pos, state.enemy_pieces)):
+            base_score = float(self.FLEE_MOVE)
+            rule_name = 'FLEE_MOVE'
+        elif LudoBoardAnalyser.is_on_goal_path(current_pos):
+            base_score = float(self.HOME_BASE_PROGRESS)
+            rule_name = 'HOME_BASE_PROGRESS'
+        elif LudoBoardAnalyser.enemy_blockade_at(next_pos, state.enemy_pieces):
+            base_score = float(self.BLOACKADE_CLUSTER)
+            rule_name = 'BLOACKADE_CLUSTER'
+        elif LudoBoardAnalyser.can_form_blockade(next_pos, state.player_pieces, piece_idx):
+            base_score = float(self.FORM_BLOCKADE_MOVE)
+            rule_name = 'FORM_BLOCKADE_MOVE'
+        elif current_pos == LudoBoardAnalyser.HOME and dice_roll == LudoBoardAnalyser.DICE_MOVE_OUT_OF_HOME:
+            base_score = float(self.GET_OUT_OF_HOME)
+            rule_name = 'GET_OUT_OF_HOME'
+        else:
+            # Strategic Layer (Additive)
+            base_score += self.PROGRESS_SCORE
+            components['progress_score'] = float(self.PROGRESS_SCORE)
+            
+            if LudoBoardAnalyser.is_on_star(next_pos):
+                base_score += self.STAR_JUMP
+                components['star_jump'] = float(self.STAR_JUMP)
+            
+            if LudoBoardAnalyser.is_on_globe(next_pos):
+                base_score += self.GLOBE_HOP
+                components['globe_hop'] = float(self.GLOBE_HOP)
+            
+            least_advanced = LudoBoardAnalyser.get_least_advanced_piece_idx(state.player_pieces)
+            if piece_idx == least_advanced:
+                base_score += self.BALANCED_FRONT
+                components['balanced_front'] = float(self.BALANCED_FRONT)
+            
+            if LudoBoardAnalyser.piece_is_in_blockade(piece_idx, state.player_pieces):
+                base_score += self.SPLIT_BLOCKADE
+            
+            if self.can_break_blockade(current_pos, next_pos, piece_idx, state.player_pieces):
+                base_score -= self.BLOCKADE_BREAK_PENALTY
+                components['blockade_break_penalty'] = float(self.BLOCKADE_BREAK_PENALTY)
+            
+            rule_name = 'STRATEGY'
+
+        # 2. Apply Contextual Multiplier
+        phase = self._get_game_phase(state.player_pieces, state.enemy_pieces)
+        multiplier = self._get_contextual_multipler(phase, rule_name)  # Note: using actual method name with typo
+        adjusted_score = base_score * multiplier
+
+        # Update components dictionary for priority rules (strategic components already set above)
+        if rule_name == 'WIN_MOVE':
+            components['win_move'] = float(adjusted_score)
+        elif rule_name == 'CAPTURE_MOVE':
+            components['capture_move'] = float(adjusted_score)
+        elif rule_name == 'FLEE_MOVE':
+            components['flee_move'] = float(adjusted_score)
+        elif rule_name == 'HOME_BASE_PROGRESS':
+            components['home_base_progress'] = float(adjusted_score)
+        elif rule_name == 'BLOACKADE_CLUSTER':
+            components['blockade_cluster'] = float(adjusted_score)
+        elif rule_name == 'FORM_BLOCKADE_MOVE':
+            components['form_blockade_move'] = float(adjusted_score)
+        elif rule_name == 'GET_OUT_OF_HOME':
+            components['get_out_of_home'] = float(adjusted_score)
+
+        # 3. Apply Risk (Always subtract from final)
         risk = self._calculate_probablistic_risk(next_pos, state.enemy_pieces)
         components['risk_penalty'] = float(risk)
 
-        # 1. can I win right now?
-        if LudoBoardAnalyser.is_at_goal(next_pos):
-            components['win_move'] = float(self.WIN_MOVE)
-            final_score = float(self.WIN_MOVE - risk)
-        # 2. Can I kill someone ?
-        elif LudoBoardAnalyser.can_capture(current_pos, dice_roll, state.enemy_pieces):
-            components['capture_move'] = float(self.CAPTURE_MOVE)
-            final_score = float(self.CAPTURE_MOVE - risk)
-
-        # 3. Am I in danger (and does this move save me?)
-        elif LudoBoardAnalyser.is_threatened(current_pos, state.enemy_pieces):
-            if LudoBoardAnalyser.is_safe_position(next_pos) or \
-               not LudoBoardAnalyser.is_threatened(next_pos, state.enemy_pieces):
-                components['flee_move'] = float(self.FLEE_MOVE)
-                final_score = float(self.FLEE_MOVE - risk)
-            else:
-                # Staying in (or moving to) danger without benefit is bad.
-                final_score = float(-risk)
-
-        # 4. Am I in the home stretch (push to win)
-        elif LudoBoardAnalyser.is_on_goal_path(current_pos):
-            components['home_base_progress'] = float(self.HOME_BASE_PROGRESS)
-            final_score = float(self.HOME_BASE_PROGRESS - risk)
-
-        # 5. Can I break an enemy blockade (advanced aggression)
-        elif LudoBoardAnalyser.enemy_blockade_at(next_pos, state.enemy_pieces):
-            components['blockade_cluster'] = float(self.BLOACKADE_CLUSTER)
-            final_score = float(self.BLOACKADE_CLUSTER - risk)
-
-        # 6. Can I form a blockade with my own pieces (defensive)
-        elif LudoBoardAnalyser.can_form_blockade(next_pos, state.player_pieces, piece_idx):
-            components['form_blockade_move'] = float(self.FORM_BLOCKADE_MOVE)
-            final_score = float(self.FORM_BLOCKADE_MOVE - risk)
-
-        # 7. Can I get a piece out of the homebase?
-        elif current_pos == LudoBoardAnalyser.HOME and \
-                dice_roll == LudoBoardAnalyser.DICE_MOVE_OUT_OF_HOME:
-            components['get_out_of_home'] = float(self.GET_OUT_OF_HOME)
-            final_score = float(self.GET_OUT_OF_HOME - risk)
-
+        # Handle special case: threatened but not fleeing (moving to/remaining in danger)
+        if LudoBoardAnalyser.is_threatened(current_pos, state.enemy_pieces) and rule_name != 'FLEE_MOVE':
+            # Staying in (or moving to) danger without benefit is bad.
+            final_score = float(-risk)
         else:
-            # Layer 2 scoring (more granular heuristics)
-            score = 0.0
-
-            # 1. Progress move forward at least
-            score += self.PROGRESS_SCORE
-            components['progress_score'] = float(self.PROGRESS_SCORE)
-
-            # 2. Star Jump (teleportation is huge)
-            if LudoBoardAnalyser.is_on_star(next_pos):
-                score += self.STAR_JUMP
-                components['star_jump'] = float(self.STAR_JUMP)
-
-            # 3. Globe Hop
-            if LudoBoardAnalyser.is_on_globe(next_pos):
-                score += self.GLOBE_HOP
-                components['globe_hop'] = float(self.GLOBE_HOP)
-
-            # 4. Balanced Front (Move the lazy pieces)
-            least_advced = LudoBoardAnalyser.get_least_advanced_piece_idx(state.player_pieces)
-            if piece_idx == least_advced:
-                score += self.BALANCED_FRONT
-                components['balanced_front'] = float(self.BALANCED_FRONT)
-
-            if LudoBoardAnalyser.piece_is_in_blockade(piece_idx, state.player_pieces):
-                score += self.SPLIT_BLOCKADE
-
-            if self.can_break_blockade(current_pos, next_pos, piece_idx,state.player_pieces):
-                score -= self.BLOCKADE_BREAK_PENALTY
-                components['blockade_break_penalty'] = float(self.BLOCKADE_BREAK_PENALTY)
-
-            # Apply risk penalty to the accumulated heuristic score
-            final_score = float(score - risk)
+            final_score = float(adjusted_score - risk)
 
         # Store debug info if enabled
         if self.debug_scores:

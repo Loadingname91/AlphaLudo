@@ -99,15 +99,10 @@ The project will be implemented in phases, with each new agent representing a st
     
     - **Agent:** `TabularQAgent`
         
-    - **Purpose:** To solve the problem with manual state abstraction, as seen in `NDurocher/YARAL` 555555555. This confronts the state-space explosion problem directly.
+    - **Purpose:** To solve the problem with manual state abstraction
         
     - **Key Challenge:** Engineering the `_get_abstract_state()` function.
         
-- **Phase 1.5: Advanced Tabular**
-    
-    - **Agent:** `TDAgent`
-        
-    - **Purpose:** To implement TD($\lambda$) 6 and eligibility traces. This tests the impact of improved temporal credit assignment on a sparse-reward, tabular agent7.
         
 - **Phase 2: Deep Q-Network**
     

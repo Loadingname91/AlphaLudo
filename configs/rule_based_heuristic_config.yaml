@@ -26,10 +26,10 @@ environment:
 
 # Training configuration
 training:
-  num_episodes: 200
+  num_episodes: 1000
   max_steps_per_episode: 10000
-  log_interval: 100  # Log every N episodes
-  save_interval: 100  # Save checkpoint every N episodes (null = never)
+  log_interval: 500  # Log every N episodes
+  save_interval: 500  # Save checkpoint every N episodes (null = never)
   checkpoint_dir: "checkpoints"
   enable_score_debug: true  # When true, attach score breakdowns to step metrics and save partial snapshots at checkpoints
 
