@@ -342,6 +342,14 @@ class MetricsTracker:
             f"reward={float(reward)}",
             f"total={score_debug.get('total_score')}",
         ]
+        
+        # Add extra fields if present (useful for Q-Learning context/epsilon)
+        if 'decision_type' in score_debug:
+            parts.append(f"type={score_debug['decision_type']}")
+        if 'epsilon' in score_debug:
+            parts.append(f"eps={score_debug['epsilon']:.3f}")
+        if 'context' in score_debug:
+            parts.append(f"ctx={score_debug['context']}")
 
         if non_zero_components:
             comp_str = ", ".join(f"{k}={v}" for k, v in non_zero_components.items())

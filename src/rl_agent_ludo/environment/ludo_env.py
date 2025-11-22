@@ -49,7 +49,7 @@ class LudoEnv:
             render: Whether to render the board using OpenCV (default: False)
         """
         self.reward_schema = reward_schema
-        self.reward_shaper = create_reward_shaper(reward_schema)
+        self.reward_shaper = create_reward_shaper(reward_schema, player_id=player_id)
         self.opponent_agents = opponent_agents or []
         self.opponent_schedule = opponent_schedule or {}
         self.player_id = player_id
@@ -72,6 +72,7 @@ class LudoEnv:
         
         # State tracking
         self.last_state: Optional[State] = None
+        self.last_post_move_state: Optional[State] = None
         
         # Episode tracking (for visualization)
         self.current_episode = 0
@@ -306,6 +307,42 @@ class LudoEnv:
             enemy_pieces=[list(ep) for ep in enemy_pieces], #  Agent uses this for threats
         )
     
+    def _get_state_for_player(self, player_id: int) -> State:
+        """
+        Get state from the perspective of a specific player.
+        Useful for reward calculation when turn has passed to opponent.
+        """
+        if self.game is None:
+             raise RuntimeError("Game not initialized")
+        
+        # 1. Get pieces for specific player
+        pieces, enemy_pieces = self.game.get_pieces(player_id)
+        
+        # 2. Get dice roll (we might not know the dice for this player if it's not their turn)
+        # But for state representation (positions), dice only matters for valid moves.
+        # If it's not their turn, valid moves are irrelevant/undefined.
+        # We reuse current dice just to satisfy State constructor, or 0.
+        dice_roll = self.current_dice if hasattr(self, 'current_dice') else 1
+        
+        # 3. Construct State
+        full_vector = self._get_full_state_vector(pieces, enemy_pieces, dice_roll)
+        abstract_state = self._get_abstract_state(pieces, enemy_pieces, dice_roll)
+        
+        # Valid moves are only relevant if it's their turn.
+        # If we are just getting state for reward calculation, valid_moves don't matter much.
+        # But State requires non-empty valid_moves.
+        valid_moves = [0]
+        
+        return State(
+            full_vector=full_vector,
+            abstract_state=abstract_state,
+            valid_moves=valid_moves,
+            dice_roll=dice_roll,
+            movable_pieces=None,
+            player_pieces=list(pieces),
+            enemy_pieces=[list(ep) for ep in enemy_pieces]
+        )
+
     def _get_full_state_vector(self, player_pieces: List[int], enemy_pieces: List[List[int]], dice_roll: int) -> np.ndarray:
         """
         Create full state vector for neural networks.
@@ -561,6 +598,7 @@ class LudoEnv:
         # Get initial state
         state = self._get_observation()
         self.last_state = state
+        self.last_post_move_state = state # Initial state
         
         # Render initial state if enabled
         if self.render:
@@ -570,21 +608,7 @@ class LudoEnv:
     
     def step(self, action: int) -> Tuple[State, float, bool, Dict]:
         """
-        Execute one step in the environment - ONE game turn.
-        
-        Executes action for the current player (learning agent if it's their turn,
-        opponent automatically if it's their turn).
-        
-        Args:
-            action: Action index (piece to move). Only used if it's learning agent's turn.
-                   Ignored for opponent turns (they play automatically).
-        
-        Returns:
-            Tuple of (next_state, reward, done, info):
-                - next_state: Next State object (for whoever's turn it is now)
-                - reward: Reward value (float) - only non-zero on learning agent's actions
-                - done: Whether episode is finished (bool)
-                - info: Additional information dictionary with 'current_player' indicating whose turn it is
+        Execute one time step within the environment.
         """
         if self.game is None:
             raise RuntimeError("Environment not reset. Call reset() first.")
@@ -592,7 +616,13 @@ class LudoEnv:
         if self.done:
             raise RuntimeError("Episode is done. Call reset() to start a new episode.")
         
+        # Before executing action, get current state for the current player
+        # CRITICAL FIX: Always fetch fresh observation to ensure we have the correct player's state
+        # Do NOT rely on self.last_state as it might belong to the previous player (opponent)
+        prev_state = self._get_observation()
+        
         game_events = {}
+        game_events['dice_roll'] = self.current_dice
         
         # Track whose turn it was BEFORE executing action
         was_learning_agent_turn = (self.current_player == self.player_id)
@@ -600,12 +630,26 @@ class LudoEnv:
         # Check if it's learning agent's turn or opponent's turn
         if was_learning_agent_turn:
             # Learning agent's turn - execute their action
-            game_events.update(self._handle_learning_agent_turn(action))
+            valid_moves = self.current_move_pieces
+            action_piece_index = valid_moves[action] if action < len(valid_moves) else -1
+            game_events['action_piece_index'] = action_piece_index
+            
+            # Execute move
+            turn_events = self._handle_learning_agent_turn(action)
+            game_events.update(turn_events)
+            
+            # CRITICAL FIX: Capture state IMMEDIATELY after agent move for reward calculation
+            # This isolates agent's impact from opponents' subsequent moves
+            # Use _get_state_for_player to ensure we get Agent's perspective even if turn passed
+            immediate_next_state = self._get_state_for_player(self.player_id)
+            game_events['prev_state'] = prev_state
+            game_events['next_state'] = immediate_next_state
+            
         else:
-            # Opponent's turn - play automatically (action parameter ignored)
+            # Opponent's turn
             game_events.update(self._handle_opponent_turn())
         
-        # After executing action, advance to next observation
+        # After executing action (and potentially opponents), advance to next observation
         self._advance_to_next_observation()
         
         # Check if game ended
@@ -617,17 +661,36 @@ class LudoEnv:
         info['episode_step'] = self.episode_step
         info['current_player'] = self.current_player
         info['is_learning_agent_turn'] = (self.current_player == self.player_id)
-        info['learning_agent_player_id'] = self.player_id  # Always include learning agent ID
-        
-        # Calculate reward (only for learning agent's actions, otherwise 0)
+        info['learning_agent_player_id'] = self.player_id
+
+        # Calculate reward (only for learning agent's actions)
         if was_learning_agent_turn or done:
-            # Reward for learning agent's action, or final reward if game ended
+            # Phase 1: Passive Reward (Events since last turn, e.g. Getting Killed)
+            passive_reward = 0.0
+            if self.last_post_move_state is not None and self.episode_step > 0 and hasattr(self.reward_shaper, 'compute_passive_reward'):
+                # Compare state at end of last turn vs state at start of this turn
+                passive_reward = self.reward_shaper.compute_passive_reward(
+                    self.last_post_move_state, prev_state
+                )
+
+            # Use the captured events (which now has immediate_next_state)
             reward, ila_components = self.reward_shaper.get_reward(game_events)
+            
+            # Add passive reward
+            reward += passive_reward
+            if passive_reward != 0:
+                ila_components['passive_reward'] = passive_reward
+
             info.update(ila_components)
+            
+            # Update last_post_move_state only if we successfully calculated reward for a move
+            if was_learning_agent_turn:
+                 # It's in game_events['next_state']
+                 if 'next_state' in game_events:
+                      self.last_post_move_state = game_events['next_state']
         else:
-            # No reward for opponent turns (learning agent doesn't learn from opponent actions)
             reward = 0.0
-        
+            
         # Increment step counter
         self.episode_step += 1
         
@@ -640,16 +703,6 @@ class LudoEnv:
             self._render()
         
         return next_state, reward, self.done, info
-    
-    
-    def get_valid_actions(self) -> List[int]:
-        """
-        Get list of valid action indices for current player.
-        
-        Returns:
-            List of valid action indices
-        """
-        return self._get_valid_actions()
     
     def close(self) -> None:
         """

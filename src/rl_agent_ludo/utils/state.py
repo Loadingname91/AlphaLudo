@@ -25,9 +25,9 @@ class State:
     valid_moves: List[int]   # List of valid action indices
     dice_roll: int           # Current dice roll (1-6)
 
-    player_pieces : List[int] 
-    enemy_pieces : List[int]
-    movable_pieces : Optional[List[int]] = None
+    player_pieces : List[int]  # 4 pieces for current player
+    enemy_pieces : List[List[int]]  # 3 enemies, each with 4 pieces (in their own coordinate systems)
+    movable_pieces : Optional[List[int]] = None  # Piece indices that can move (0-3)
 
     def __post_init__(self):
         """Validate state after initialization."""

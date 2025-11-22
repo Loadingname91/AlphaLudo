@@ -9,11 +9,11 @@ import argparse
 import sys
 import os
 from pathlib import Path
-from utils.visualizer import visualize_board_indices
 # Add src to path
 src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
+from rl_agent_ludo.utils.visualizer import visualize_board_indices
 from rl_agent_ludo.environment.ludo_env import LudoEnv
 from rl_agent_ludo.agents.agent_registry import AgentRegistry
 from rl_agent_ludo.trainer.trainer import Trainer
@@ -132,10 +132,12 @@ def main():
         agent = AgentRegistry.create_agent({'type': config['agent']['type']})
     
     # Create trainer
+    trainer_config = config.get('training', {})
     trainer = Trainer(
         env=env,
         agent=agent,
-        config=config
+        config=config,
+        use_context_aware_rewards=trainer_config.get('use_context_aware_rewards', False)
     )
     
     # Run training

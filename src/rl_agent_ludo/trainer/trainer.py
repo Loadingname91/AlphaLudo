@@ -15,6 +15,8 @@ from ..environment.ludo_env import LudoEnv
 from ..agents.base_agent import Agent
 from ..metrics.metrics_tracker import MetricsTracker
 from ..utils.state import State
+from ..environment.reward_shaper import ContextualRewardShaper
+from ..utils.state_abstractor import CONTEXT_TRAILING, CONTEXT_NEUTRAL, CONTEXT_LEADING
 
 
 class Trainer:
@@ -31,7 +33,8 @@ class Trainer:
         agent: Agent,
         config: Dict[str, Any],
         logger: Optional[logging.Logger] = None,
-        experiment_logger: Optional[Any] = None
+        experiment_logger: Optional[Any] = None,
+        use_context_aware_rewards:bool = False # for checking in context aware rewards
     ):
         """
         Initialize trainer.
@@ -67,6 +70,17 @@ class Trainer:
         # Training state
         self.episode_count = 0
         self.step_count = 0
+        
+        # Context-aware reward shaper
+        self.use_context_aware_rewards = use_context_aware_rewards
+        if self.use_context_aware_rewards:
+            self.reward_shaper = ContextualRewardShaper(player_id=env.player_id)
+            # Inject into env to ensure step() calculates passive/active rewards correctly
+            self.env.reward_shaper = self.reward_shaper
+            # Track context frequencies for metrics
+            self.context_counts = {CONTEXT_TRAILING: 0, CONTEXT_NEUTRAL: 0, CONTEXT_LEADING: 0}
+        else:
+            self.reward_shaper = None
     
     def run(self) -> Dict[str, Any]:
         """
@@ -117,6 +131,7 @@ class Trainer:
         On-policy training loop (for PPO, MCTS).
         
         Collects rollouts and learns from them.
+        Updated to use ContextualRewardShaper when enabled.
         
         Returns:
             Dictionary with training results
@@ -153,6 +168,9 @@ class Trainer:
                 if is_learning_agent_turn:
                     # Learning agent's turn - get action from agent
                     action = self.agent.act(state)
+                    
+                    # Store previous state BEFORE step for reward calculation
+                    prev_state = state
 
                     # Optional score debugging information from agent
                     score_debug = None
@@ -161,7 +179,16 @@ class Trainer:
                         score_debug = self.agent.get_last_score_debug()
 
                     # Environment step
-                    next_state, reward, done, info = self.env.step(action)
+                    next_state, env_reward, done, info = self.env.step(action)
+                    
+                    # Calculate context-aware reward if enabled
+                    # Handled by LudoEnv if injected
+                    reward = env_reward
+                    
+                    # Track context frequency
+                    if self.use_context_aware_rewards and hasattr(self.agent, 'last_state_tuple') and self.agent.last_state_tuple:
+                        context = self.agent.last_state_tuple[4]
+                        self.context_counts[context] = self.context_counts.get(context, 0) + 1
                     
                     # Store experience
                     experience = {
@@ -174,7 +201,7 @@ class Trainer:
                     }
                     rollout_buffer.append(experience)
                     
-                    # Log metrics (including optional score breakdown)
+                    # Log metrics
                     self.metrics_tracker.log_metrics(state, action, reward, info, score_debug=score_debug)
                     episode_rewards.append(reward)
                     
@@ -188,10 +215,7 @@ class Trainer:
                         self._log_to_experiment_logger(step, reward, info)
                 else:
                     # Opponent's turn - environment handles it automatically
-                    # Use dummy action (will be ignored by environment)
                     next_state, reward, done, info = self.env.step(0)
-                    
-                    # Update state to track game progress
                     state = next_state
                     step += 1
                     self.step_count += 1
@@ -200,9 +224,14 @@ class Trainer:
             if hasattr(self.agent, 'learn_from_rollout'):
                 self.agent.learn_from_rollout(rollout_buffer)
             
-            # Log episode
+            # Log episode (with context info if enabled)
             episode_info['total_reward'] = sum(episode_rewards)
             episode_info['episode_length'] = step
+            
+            if self.use_context_aware_rewards:
+                episode_info['context_trailing'] = self.context_counts.get(CONTEXT_TRAILING, 0)
+                episode_info['context_neutral'] = self.context_counts.get(CONTEXT_NEUTRAL, 0)
+                episode_info['context_leading'] = self.context_counts.get(CONTEXT_LEADING, 0)
             
             # Add learning agent player ID (from last info dict)
             if 'learning_agent_player_id' in info:
@@ -219,6 +248,10 @@ class Trainer:
             
             self.metrics_tracker.log_episode(episode_info)
             self.episode_count += 1
+            
+            # Notify agent that episode ended (for epsilon decay, etc.)
+            if hasattr(self.agent, 'on_episode_end'):
+                self.agent.on_episode_end()
             
             # Update progress bar with statistics
             summary = self.metrics_tracker.get_summary()
@@ -262,7 +295,8 @@ class Trainer:
         return {
             'episodes': self.episode_count,
             'steps': self.step_count,
-            'mode': 'on_policy'
+            'mode': 'on_policy',
+            'context_counts': self.context_counts if self.use_context_aware_rewards else None
         }
     
     def run_off_policy_loop(self) -> Dict[str, Any]:
@@ -270,6 +304,7 @@ class Trainer:
         Off-policy training loop (for Q-Learning, DQN, Random).
         
         Collects experiences and learns from replay buffer.
+        Uses N-step pending experience to ensure next_state is always an Agent Turn state.
         
         Returns:
             Dictionary with training results
@@ -297,13 +332,39 @@ class Trainer:
             done = False
             step = 0
             
+            # Buffer for storing experience until next agent turn
+            pending_experience = None
+            
             while not done and step < self.max_steps_per_episode:
                 # Check whose turn it is
                 is_learning_agent_turn = (self.env.current_player == self.env.player_id)
                 
                 if is_learning_agent_turn:
-                    # Learning agent's turn - get action from agent
+                    # 1. Process pending experience from PREVIOUS agent turn
+                    if pending_experience is not None:
+                        prev_s = pending_experience['state']
+                        prev_a = pending_experience['action']
+                        prev_r = pending_experience['reward']
+                        prev_info = pending_experience['info']
+                        
+                        # CURRENT state is the next_state for the previous action
+                        # (We skipped opponent turns to get here)
+                        current_s_as_next = state 
+                        
+                        # Push to buffer
+                        if self.agent.needs_replay_learning:
+                            self.agent.push_to_replay_buffer(
+                                prev_s, prev_a, prev_r, current_s_as_next, False, **prev_info
+                            )
+                            self.agent.learn_from_replay()
+                        
+                        pending_experience = None
+
+                    # 2. Learning agent's turn - get action from agent
                     action = self.agent.act(state)
+                    
+                    # Store previous state BEFORE step for reward calculation
+                    prev_state = state
 
                     # Optional score debugging information from agent
                     score_debug = None
@@ -311,42 +372,96 @@ class Trainer:
                             getattr(self.agent, 'supports_score_debug', False):
                         score_debug = self.agent.get_last_score_debug()
 
-                    # Environment step
-                    next_state, reward, done, info = self.env.step(action)
+                    current_s_for_prev = state # The state at start of turn
                     
-                    # Push to replay buffer (if agent needs it)
-                    if self.agent.needs_replay_learning:
-                        self.agent.push_to_replay_buffer(state, action, reward, next_state, done, **info)
+                    # Environment step (returns reward which includes passive/wait penalty)
+                    next_state, total_reward, done, info = self.env.step(action)
                     
-                    # Learn from replay (if agent needs it)
-                    if self.agent.needs_replay_learning:
-                        self.agent.learn_from_replay()
+                    # 3. Decompose Reward (Active vs Passive)
+                    # Extract rewards
+                    passive_reward = info.get('passive_reward', 0.0)
+                    active_reward = total_reward - passive_reward # Roughly, if additive
+                    
+                    # Handle Pending Experience (Previous Action)
+                    if pending_experience is not None:
+                        # Add passive penalty (death) to previous action's reward
+                        pending_experience['reward'] += passive_reward
+                        
+                        # Push previous transition
+                        if self.agent.needs_replay_learning:
+                            self.agent.push_to_replay_buffer(
+                                pending_experience['state'], 
+                                pending_experience['action'], 
+                                pending_experience['reward'], 
+                                current_s_for_prev, # The state we arrived at (start of this turn)
+                                False, # Previous action did not end episode (we are here)
+                                **pending_experience['info']
+                            )
+                            self.agent.learn_from_replay()
+                    
+                    # Create New Pending Experience
+                    pending_experience = {
+                        'state': current_s_for_prev, # State we acted in
+                        'action': action,
+                        'reward': active_reward, # Reward for the action itself
+                        'info': info
+                    }
+                    
+                    # Track context frequency (if agent tracks state tuples)
+                    if self.use_context_aware_rewards and hasattr(self.agent, 'last_state_tuple') and self.agent.last_state_tuple:
+                        context = self.agent.last_state_tuple[4]
+                        self.context_counts[context] = self.context_counts.get(context, 0) + 1
                     
                     # Log metrics (including optional score breakdown)
-                    self.metrics_tracker.log_metrics(state, action, reward, info, score_debug=score_debug)
-                    episode_rewards.append(reward)
+                    self.metrics_tracker.log_metrics(state, action, total_reward, info, score_debug=score_debug)
+                    episode_rewards.append(total_reward)
                     
                     # Update state
                     state = next_state
                     step += 1
                     self.step_count += 1
                     
-                    # Log to experiment logger if available
+                    # Log to experiment logger
                     if self.experiment_logger:
-                        self._log_to_experiment_logger(step, reward, info)
+                        self._log_to_experiment_logger(step, total_reward, info)
+                        
                 else:
-                    # Opponent's turn - environment handles it automatically
-                    # Use dummy action (will be ignored by environment)
+                    # Opponent's turn
+                    # Use dummy action
                     next_state, reward, done, info = self.env.step(0)
                     
-                    # Update state to track game progress
+                    # We do NOT accumulate opponent reward into pending_experience here
+                    # because LudoEnv calculates passive_reward at start of next agent turn.
+                    
+                    # Update state
                     state = next_state
                     step += 1
                     self.step_count += 1
             
+            # End of Episode
+            # Push the final pending experience
+            if pending_experience is not None:
+                final_reward = pending_experience['reward']
+                
+                self.agent.push_to_replay_buffer(
+                    pending_experience['state'],
+                    pending_experience['action'],
+                    final_reward,
+                    state, # Terminal state
+                    True, # Done
+                    **pending_experience['info']
+                )
+                self.agent.learn_from_replay()
+
             # Log episode
             episode_info['total_reward'] = sum(episode_rewards)
             episode_info['episode_length'] = step
+            
+            # Add context frequency metrics if using context-aware rewards
+            if self.use_context_aware_rewards:
+                episode_info['context_trailing'] = self.context_counts.get(CONTEXT_TRAILING, 0)
+                episode_info['context_neutral'] = self.context_counts.get(CONTEXT_NEUTRAL, 0)
+                episode_info['context_leading'] = self.context_counts.get(CONTEXT_LEADING, 0)
             
             # Add learning agent player ID (from last info dict)
             if 'learning_agent_player_id' in info:
@@ -363,6 +478,10 @@ class Trainer:
             
             self.metrics_tracker.log_episode(episode_info)
             self.episode_count += 1
+            
+            # Notify agent that episode ended (for epsilon decay, etc.)
+            if hasattr(self.agent, 'on_episode_end'):
+                self.agent.on_episode_end()
             
             # Update progress bar with statistics
             summary = self.metrics_tracker.get_summary()
@@ -415,7 +534,8 @@ class Trainer:
         return {
             'episodes': self.episode_count,
             'steps': self.step_count,
-            'mode': 'off_policy'
+            'mode': 'off_policy',
+            'context_counts': self.context_counts if self.use_context_aware_rewards else None
         }
     
     def _set_seeds(self, seed: int) -> None:

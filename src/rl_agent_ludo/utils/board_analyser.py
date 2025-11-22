@@ -4,14 +4,14 @@ from token import STAR
 from turtle import distance
 from typing import List, Tuple
 
-from ludopy.player import HOME_AREAL_INDEXS
+from ludopy.player import HOME_AREAL_INDEXS, get_enemy_at_pos, NO_ENEMY
 
 
 # Constants from the board
 HOME_INDEX = 0
 START_INDEX = 1
 GOAL_INDEX = 57
-HOME_STRETCH_INDEXS = [52, 53, 54, 55, 56]  # The safe "Home Stretch"
+HOME_STRETCH_INDEXS = HOME_AREAL_INDEXS  # The safe "Home Stretch"
 GLOB_INDEXS = [9, 22, 35, 48]             # Safe Globes
 STAR_INDEXS = [5, 12, 18, 25, 31, 38, 44, 51] # Stars (Jump points)
 DICE_MOVE_OUT_OF_HOME = 6
@@ -178,23 +178,24 @@ class LudoBoardAnalyser:
     @staticmethod
     def can_capture(from_pos:int,dice_roll:int,enemy_pieces:list[list[int]])->bool:
         """
-        returns true if move lands on an enemy (sending them home)
+        Returns true if move lands on an enemy (sending them home).
+        Uses ludopy's coordinate conversion to handle different enemy coordinate frames.
         """
         predicted_pos = LudoBoardAnalyser.simulate_move(from_pos,dice_roll)
         
-        # cannot capture in safe zones
-        # Note you can capture on Stars if you land on them before the jump 
-        # but ludopy  simplifies this L usually capture happens at final destination
-        danger_zone = [GOAL_INDEX,HOME_INDEX] + GLOB_INDEXS
-        if predicted_pos in danger_zone:
+        # Cannot capture in safe zones (goal, home, or globes)
+        # Note: You can capture on Stars if you land on them before the jump,
+        # but ludopy simplifies this - capture usually happens at final destination
+        safe_zones = [GOAL_INDEX, HOME_INDEX] + GLOB_INDEXS
+        if predicted_pos in safe_zones:
             return False
         
-        for opp_pieces in enemy_pieces:
-            for enemy_pieces in opp_pieces:
-                if enemy_pieces == predicted_pos:
-                    return True
-
-        return False
+        # Use ludopy's get_enemy_at_pos to check if any enemy is at predicted position
+        # This handles coordinate conversion automatically
+        enemy_at_pos, enemy_pieces_at_pos = get_enemy_at_pos(predicted_pos, enemy_pieces)
+        
+        # If enemy_at_pos is not NO_ENEMY, we can capture
+        return enemy_at_pos != NO_ENEMY
 
     
     @staticmethod
