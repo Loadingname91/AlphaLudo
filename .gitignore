@@ -44,7 +44,7 @@ results/
 checkpoints/
 logs/
 *.log
-Research/*
+.projectDescription/Research/*
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
