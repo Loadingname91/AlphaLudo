@@ -66,10 +66,10 @@ def test_env_step_multiple_steps(ludo_env):
 
 
 def test_env_get_valid_actions(ludo_env):
-    """Test that get_valid_actions() returns list of valid actions."""
+    """Test that _get_valid_actions() returns list of valid actions."""
     ludo_env.reset()
     
-    valid_actions = ludo_env.get_valid_actions()
+    valid_actions = ludo_env._get_valid_actions()
     
     assert isinstance(valid_actions, list)
     assert len(valid_actions) > 0  # Always at least pass action

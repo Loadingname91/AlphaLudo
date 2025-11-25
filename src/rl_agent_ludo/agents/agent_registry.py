@@ -10,6 +10,7 @@ from rl_agent_ludo.agents.rule_based_heuristic_agent import RuleBasedHeuristicAg
 from .base_agent import Agent
 from .random_agent import RandomAgent
 from .QLearning_agent import QLearningAgent
+from .dqn_agent import DQNAgent
 
 class AgentRegistry:
     """
@@ -23,10 +24,10 @@ class AgentRegistry:
         'random': RandomAgent,
         'rule_based_heuristic': RuleBasedHeuristicAgent,
         'q_learning': QLearningAgent,
+        'dqn': DQNAgent,
         # Rule based  agent : to be implemented in Phase 1
         # 'tabular_q': TabularQAgent,  # To be implemented in Phase 1
         # 'td': TDAgent,  # To be implemented in Phase 1.5
-        # 'dqn': DQNAgent,  # To be implemented in Phase 2
         # 'ppo': PPOAgent,  # To be implemented in Phase 3
         # 'mcts': MCTSAgent,  # To be implemented in Phase 4
     }

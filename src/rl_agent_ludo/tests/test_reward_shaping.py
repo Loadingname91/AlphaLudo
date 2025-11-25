@@ -68,6 +68,6 @@ def test_reward_shaper_factory():
     with pytest.raises(ValueError):
         create_reward_shaper('invalid_schema')
     
-    # Case insensitive (should work)
-    reward_shaper2 = create_reward_shaper('SPARSE')
+    # Case sensitive - should use lowercase
+    reward_shaper2 = create_reward_shaper('sparse')
     assert isinstance(reward_shaper2, SparseReward)

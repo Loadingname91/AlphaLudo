@@ -103,7 +103,6 @@ The project will be implemented in phases, with each new agent representing a st
         
     - **Key Challenge:** Engineering the `_get_abstract_state()` function.
         
-        
 - **Phase 2: Deep Q-Network**
     
     - **Agent:** `DQNAgent`

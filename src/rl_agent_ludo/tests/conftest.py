@@ -12,10 +12,14 @@ def sample_state():
     abstract_state = ((0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), 1, 0)
     valid_moves = [0, 1, 2]
     dice_roll = 1
+    player_pieces = [0, 1, 2, 3]
+    enemy_pieces = [[4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]]
     
     return State(
         full_vector=full_vector,
         abstract_state=abstract_state,
         valid_moves=valid_moves,
-        dice_roll=dice_roll
+        dice_roll=dice_roll,
+        player_pieces=player_pieces,
+        enemy_pieces=enemy_pieces
     )

@@ -1,0 +1,69 @@
+# Dueling Double DQN Agent Configuration
+# Implements: Dueling DQN + Double Learning + Prioritized Replay (PER) + N-Step Returns
+
+# Experiment settings
+experiment:
+  name: "dqn_dueling_orthogonal"
+  seed: 42
+  output_dir: "results"
+
+# Agent configuration
+agent:
+  type: "dqn"
+  seed: 42
+  player_id: 0
+  debug_scores: true  # Enable to log Q-values, decisions, TD-errors, and loss
+  
+  # Training Hyperparameters (Scaled for 500-episode test run)
+  learning_rate: 0.00015       # Slightly higher for faster learning in short run
+  gamma: 0.99                  # Discount factor: High discount for long-term planning
+  # discount_factor: 0.99      # Alternative name (gamma is preferred)
+  
+  # Exploration (Epsilon-Greedy) - Faster decay for 500 episodes
+  epsilon_start: 1.0           # Initial exploration rate (full exploration)
+  epsilon_end: 0.05            # Slightly higher end for more exploration in short run
+  epsilon_decay: 0.994         # Faster decay: reaches ~0.05 after 500 episodes (calculated)
+  
+  # Experience Replay (Reduced for faster buffer filling)
+  batch_size: 32               # Batch size for learning (keep standard)
+  buffer_size: 20000           # Smaller buffer for faster filling (was 80000)
+  
+  # Target Network (More frequent updates for shorter run)
+  target_update_freq: 500     # Update more frequently (was 1000) for faster convergence
+  
+  # Device
+  device: "cpu"                # "cpu" or "cuda" (if GPU available)
+  
+  # Prioritized Experience Replay (PER) parameters
+  per_alpha: 0.6               # Prioritization exponent (0=uniform, 1=full priority)
+  per_beta_start: 0.4          # Initial importance sampling exponent
+  per_beta_end: 1.0            # Final importance sampling exponent
+  per_epsilon: 0.000001       # Small constant for non-zero priority (1e-6 as decimal)
+
+# Environment configuration
+environment:
+  reward_schema: "sparse"      # Base reward schema (DQN uses its own reward shaping)
+  player_id: 0
+  render: false                # Set to true for visualization (slows training significantly)
+  # opponent_agents: []        # Can specify opponent agents here
+  # opponent_schedule: {}      # Curriculum learning schedule
+
+# Training configuration
+training:
+  num_episodes: 500          # Total training episodes (Test run - scaled hyperparameters)
+  max_steps_per_episode: 10000 # Maximum steps per episode (safety limit)
+  log_interval: 100            # Log metrics every N episodes
+  save_interval: 100          # Save checkpoint every N episodes (null = never)
+  checkpoint_dir: "checkpoints/dqn_dueling"
+  enable_score_debug: true     # Enable to log detailed score breakdowns (requires debug_scores: true in agent config)
+  
+  # Learning schedule (Scaled for 500 episodes)
+  warmup_episodes: 50          # Fill buffer quickly (was 1000, now 10% of total)
+  min_buffer_size: 500         # Start learning earlier (was 1000)
+
+# Logging configuration (optional)
+# logging:
+#   tensorboard_dir: "logs/tensorboard/dqn_dueling"
+#   wandb_project: "rl-agent-ludo-dqn"
+#   wandb_run_name: "dueling_dqn_orthogonal"
+

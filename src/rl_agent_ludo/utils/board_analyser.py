@@ -28,6 +28,7 @@ class LudoBoardAnalyser:
     GLOBES = GLOB_INDEXS
     STARS = STAR_INDEXS
     DICE_MOVE_OUT_OF_HOME = DICE_MOVE_OUT_OF_HOME
+    HOME_STRETCH_INDEXS = HOME_STRETCH_INDEXS
 
 
     # Core Physics (Simulation and distance )
@@ -184,7 +185,8 @@ class LudoBoardAnalyser:
         predicted_pos = LudoBoardAnalyser.simulate_move(from_pos,dice_roll)
         
         # Cannot capture in safe zones (goal, home, or globes)
-        # Note: You can capture on Stars if you land on them before the jump,
+        # Note: START_INDEX (1) is safe but you CAN capture enemies from there
+        # You can capture on Stars if you land on them before the jump,
         # but ludopy simplifies this - capture usually happens at final destination
         safe_zones = [GOAL_INDEX, HOME_INDEX] + GLOB_INDEXS
         if predicted_pos in safe_zones:
