@@ -79,17 +79,16 @@ RLagentLudo/
 
 ## Implemented Agents
 
-### Random Agent
-Baseline agent that selects random valid actions. Expected win rate: ~25% (1/4 players).
+We implement a spectrum of agents ranging from stochastic baselines to deep reinforcement learning models.
 
-### Rule-Based Heuristic Agent
-Hand-crafted heuristic agent using priority-based scoring with phase-aware contextual multipliers. Evaluates moves based on tactical considerations (captures, safety, progress, blockades).
+| Agent | Type | Description | Documentation |
+|-------|------|-------------|---------------|
+| **Random** | Baseline | Selects random valid moves. Used for environment validation. | [Docs](docs/agents/random/README.md) |
+| **Rule-Based** | Heuristic | Uses human-crafted priority rules (Instincts -> Strategy -> Context). | [Docs](docs/agents/rule_based_heuristic/README.md) |
+| **Q-Learning** | Tabular RL | Learns policies over an abstract state space (State Abstraction). | [Docs](docs/agents/q_learning/README.md) |
+| **Dueling DQN** | Deep RL | Dueling Double DQN with Prioritized Experience Replay (PER). | [Docs](docs/agents/dqn/README.md) |
 
-### Tabular Q-Learning Agent
-Q-learning with context-aware state abstraction. Uses potential-based state representation (P1, P2, P3, P4, Context) and dynamic reward scaling based on game context (trailing/neutral/leading) and move potentials.
-
-### Dueling Double DQN Agent
-Deep Q-network using Dueling architecture with Double Q-learning and Prioritized Experience Replay. Employs orthogonal state abstraction for neural network input.
+> 📚 **Detailed Analysis**: See [AGENTS.md](docs/AGENTS.md) for theory, architecture, and detailed implementation notes for each agent.
 
 ## Configuration
 

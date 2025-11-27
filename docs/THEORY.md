@@ -1,176 +1,65 @@
 # Theoretical Foundations
 
-This document outlines the theoretical foundations underlying the reinforcement learning approaches implemented in this project.
+This document outlines the core theoretical concepts of Reinforcement Learning (RL) used in this project. For specific implementation details of each agent (e.g., exact state tuples, network architectures), please refer to the [Agent Documentation](AGENTS.md).
 
-## Reinforcement Learning Basics
+## 1. The Environment as an MDP
 
-### Markov Decision Process (MDP)
+We model the game of Ludo as a **Markov Decision Process (MDP)**, defined by the tuple $(S, A, P, R, \gamma)$:
 
-Ludo can be modeled as a Markov Decision Process (MDP) with:
-- **State Space S**: All possible board configurations
-- **Action Space A**: Valid moves for each piece (0-3)
-- **Transition Probability P(s'|s,a)**: Stochastic due to dice rolls and opponent actions
-- **Reward Function R(s,a,s')**: Shaped rewards based on game events
-- **Discount Factor γ**: Future reward discounting (typically 0.9-0.99)
+- **State Space ($S$)**: The set of all possible board configurations. In Ludo, this includes the positions of all 16 pieces (4 per player) and the current dice roll. The raw state space size is approx. $57^{16} \approx 10^{28}$, which necessitates approximation methods.
+- **Action Space ($A$)**: The set of valid moves. For a given dice roll, a player has at most 4 legal moves (one for each piece), though fewer if pieces are stuck or blocked.
+- **Transition Function ($P$)**: $P(s'|s, a)$ is the probability of reaching state $s'$ after taking action $a$. In Ludo, this is stochastic due to the dice roll for the next turn and the moves of the 3 opponents.
+- **Reward Function ($R$)**: $R(s, a, s')$ defines the immediate feedback. We use **Reward Shaping** to provide dense feedback (e.g., for capturing, entering safe zones) rather than just a sparse win/loss signal.
+- **Discount Factor ($\gamma$)**: Determines the importance of future rewards. We typically use $\gamma \in [0.9, 0.99]$.
 
-### Value Functions
+## 2. Value-Based Reinforcement Learning
 
-**State Value Function V(s)**: Expected cumulative reward from state s:
-```
-V(s) = E[Σ γᵗ rₜ | s₀ = s]
-```
+Our agents rely on estimating the **Value Function** to make decisions.
 
-**Action Value Function Q(s,a)**: Expected cumulative reward from state s taking action a:
-```
-Q(s,a) = E[Σ γᵗ rₜ | s₀ = s, a₀ = a]
-```
+### The Bellman Equation
+The optimal action-value function $Q^*(s, a)$ obeys the Bellman Optimality Equation:
 
-### Bellman Equations
+$$ Q^*(s, a) = \mathbb{E}_{s'} [R + \gamma \max_{a'} Q^*(s', a') | s, a] $$
 
-**Bellman Equation for V(s)**:
-```
-V(s) = Σ P(s'|s,a) [R(s,a,s') + γV(s')]
-```
+This recursive relationship allows us to learn $Q$ values iteratively.
 
-**Bellman Equation for Q(s,a)**:
-```
-Q(s,a) = Σ P(s'|s,a) [R(s,a,s') + γ max Q(s',a')]
-```
+## 3. Algorithms Implemented
 
-## Q-Learning
+### Tabular Q-Learning
+For the **Q-Learning Agent**, we solve the Bellman equation directly using a lookup table.
+$$ Q(s, a) \leftarrow Q(s, a) + \alpha [R + \gamma \max_{a'} Q(s', a') - Q(s, a)] $$
 
-### Algorithm
+**Key Challenge**: The raw state space is too large for a table.
+**Solution**: **State Abstraction**. We map the raw board state to a compact feature tuple (e.g., "Is piece 1 safe?", "Can piece 2 kill?").
+> See [Q-Learning Theory](agents/q_learning/THEORY.md) for details on the abstraction logic.
 
-Q-Learning is a model-free, off-policy temporal difference learning algorithm:
+### Deep Q-Networks (DQN)
+For the **DQN Agent**, we use a neural network $Q(s, a; \theta)$ to approximate the Q-values.
+$$ \text{Loss}(\theta) = \mathbb{E} [(y - Q(s, a; \theta))^2] $$
+$$ y = R + \gamma \max_{a'} Q(s', a'; \theta^-) $$
 
-```
-Q(s,a) ← Q(s,a) + α[r + γ max Q(s',a') - Q(s,a)]
-```
+**Key Techniques Used**:
+1.  **Experience Replay**: Storing transitions to break correlation and improve sample efficiency.
+2.  **Target Networks**: Using a slowly updating network ($\theta^-$) to calculate targets ($y$) for stability.
+3.  **Double DQN**: Decoupling action selection from evaluation to reduce overestimation bias.
+4.  **Dueling Architecture**: Separating the estimation of State Value $V(s)$ and Action Advantage $A(s, a)$.
+> See [DQN Theory](agents/dqn/THEORY.md) for network architecture and training specifics.
 
-where:
-- α: learning rate
-- r: immediate reward
-- γ: discount factor
-- s': next state
+## 4. Reward Shaping
+To accelerate learning, we augment the sparse "Win (+100) / Loss (-100)" signal with heuristic rewards:
+- **Progress**: Small positive reward for moving forward.
+- **Capture (Kill)**: Large positive reward for sending an opponent home.
+- **Safety**: Reward for entering a Globe or Star.
+- **Goal**: Large reward for finishing a piece.
 
-### Convergence
+We also implement **Context-Aware Shaping**, where rewards are scaled dynamically based on whether the agent is winning or losing.
 
-Under certain conditions (sufficient exploration, finite state/action spaces), Q-learning converges to the optimal Q-function Q*.
-
-### State Abstraction
-
-For large state spaces, we use state abstraction to reduce dimensionality:
-- **Potential-Based Abstraction**: Classify each piece's move outcome into categories (NULL, NEUTRAL, RISK, BOOST, SAFETY, KILL, GOAL)
-- **Context**: Global game state (TRAILING, NEUTRAL, LEADING) based on weighted equity
-
-## Deep Q-Networks (DQN)
-
-### Function Approximation
-
-DQN uses neural networks to approximate Q(s,a) for large/continuous state spaces:
-```
-Q(s,a; θ) ≈ Q*(s,a)
-```
-
-where θ are network parameters.
-
-### Key Techniques
-
-**Experience Replay**: Store transitions (s,a,r,s') in a buffer and sample batches for learning. Breaks correlation between consecutive samples.
-
-**Target Network**: Use a separate target network Q(s,a; θ⁻) for computing targets:
-```
-Target = r + γ max Q(s',a'; θ⁻)
-```
-
-Updates target network periodically by copying online network weights.
-
-**Double DQN**: Reduces overestimation bias by using online network for action selection and target network for evaluation:
-```
-Target = r + γ Q_target(s', argmax Q_online(s',a'))
-```
-
-**Dueling Architecture**: Separates value V(s) and advantage A(s,a):
-```
-Q(s,a) = V(s) + (A(s,a) - mean A(s,a))
-```
-
-**Prioritized Experience Replay**: Sample transitions with probability proportional to TD-error magnitude, focusing learning on surprising experiences.
-
-## Reward Shaping
-
-### Sparse Rewards
-
-- Win: +100
-- Loss: -100
-- Draw: 0
-
-### Dense Rewards
-
-Provide intermediate feedback:
-- Goal entry: +100
-- Capture: +50
-- Safety: +15
-- Boost: +10
-- Progress: +1
-- Death: -20
-
-### Context-Aware Rewards
-
-Scale rewards based on game context and move potential:
-- **Trailing**: Boost aggressive moves, reduce conservative
-- **Leading**: Boost defensive moves, reduce aggression
-- **Neutral**: No scaling
-
-This helps the agent adapt its strategy to the current game situation.
-
-## State Representation
-
-### Full State Vector
-
-For neural networks, we use a normalized feature vector:
-- Piece positions (normalized 0-1)
-- Enemy piece positions
-- Dice roll (normalized)
-- Current player (one-hot)
-- Turn indicator
-
-### Abstract State
-
-For tabular methods, we use a hashable tuple:
-- (P1, P2, P3, P4, Context)
-- P1-P4: Potential categories for each piece
-- Context: Global game context (trailing/neutral/leading)
-
-## Exploration vs Exploitation
-
-### ε-Greedy Policy
-
-Balance exploration and exploitation:
-- With probability ε: random action (exploration)
-- With probability 1-ε: greedy action argmax Q(s,a) (exploitation)
-
-### Epsilon Decay
-
-Start with high ε (exploration) and decay over time:
-```
-εₜ = max(ε_min, ε₀ × decay^t)
-```
-
-## Multi-Agent Considerations
-
-Ludo is a multi-agent game with:
-- **Stochastic Opponents**: Opponent actions are not fully predictable
-- **Non-Stationarity**: Opponent strategies may change
-- **Partial Observability**: Cannot directly observe opponent strategies
-
-Our experiments use random opponents as a baseline. Results may differ against stronger or learning opponents.
+## 5. Multi-Agent Dynamics
+Ludo is a 4-player zero-sum (or constant-sum) game.
+- **Non-Stationarity**: From the perspective of one agent, the opponents are part of the environment. If opponents learn, the environment changes.
+- **Self-Play**: Ideally, agents should train against themselves to reach Nash Equilibrium. Currently, we train against a mix of Random and Rule-Based opponents.
 
 ## References
-
-- Sutton, R. S., & Barto, A. G. (2018). *Reinforcement Learning: An Introduction* (2nd ed.). MIT Press.
-- Mnih, V., et al. (2015). Human-level control through deep reinforcement learning. *Nature*, 518(7540), 529-533.
-- Van Hasselt, H., Guez, A., & Silver, D. (2016). Deep reinforcement learning with double q-learning. *AAAI*.
-- Wang, Z., et al. (2016). Dueling network architectures for deep reinforcement learning. *ICML*.
-- Schaul, T., et al. (2016). Prioritized experience replay. *ICLR*.
-
+- Sutton, R. S., & Barto, A. G. (2018). *Reinforcement Learning: An Introduction*.
+- Mnih, V., et al. (2015). *Human-level control through deep reinforcement learning*. Nature.
+- Van Hasselt, H., et al. (2016). *Deep Reinforcement Learning with Double Q-Learning*. AAAI.
