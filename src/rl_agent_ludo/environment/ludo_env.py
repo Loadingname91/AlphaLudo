@@ -1,8 +1,8 @@
 """
-Pillar 1: LudoEnv (Environment Abstraction Layer)
+Ludo environment wrapper.
 
-Hardware abstraction layer (HAL) between project and ludopy library.
-Provides a clean, Gym-like step()/reset() interface.
+Provides a Gym-like interface (reset, step) around the ludopy library.
+Handles state representation, reward shaping, and opponent management.
 """
 
 import numpy as np

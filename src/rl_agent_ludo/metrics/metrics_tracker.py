@@ -1,8 +1,8 @@
 """
-Pillar 4: MetricsTracker (Raw Data Collection)
+Metrics collection and logging.
 
-Lightweight metrics collection class with no analysis dependencies.
-Collects raw data and saves to JSON/CSV files for offline analysis.
+Lightweight metrics tracker with no analysis dependencies.
+Collects raw training data and exports to JSON/CSV for offline analysis.
 """
 
 import json

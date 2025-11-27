@@ -1,7 +1,7 @@
 """
-Pillar 1.5: State DTO (Data Transfer Object)
+State data transfer object.
 
-Immutable dataclass that passes all necessary state information from LudoEnv to Agent.
+Immutable dataclass that encapsulates all state information passed from environment to agent.
 """
 
 from dataclasses import dataclass

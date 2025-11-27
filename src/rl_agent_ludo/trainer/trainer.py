@@ -1,7 +1,8 @@
 """
-Pillar 5: Trainer (Orchestrator)
+Training orchestrator.
 
-Main application orchestrator managing training loop, environment-agent interaction, and logging.
+Manages the training loop, coordinates environment-agent interactions, and handles logging.
+Supports both on-policy and off-policy learning algorithms.
 """
 
 import os

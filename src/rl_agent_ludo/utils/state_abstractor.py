@@ -1,8 +1,8 @@
 """
-Pillar 2: State Abstraction (The Translator)
+State abstraction for tabular Q-learning.
 
-Converts raw Ludo board states into the 'Context-Aware Potential-Based' tuple.
-Implements the logic for Weighted Equity, Potentials, and Move Simulation.
+Converts raw board states into context-aware potential-based tuples.
+Uses weighted equity to determine game context and move simulation to classify piece potentials.
 """
 
 import numpy as np

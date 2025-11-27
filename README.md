@@ -1,23 +1,28 @@
-# RL Agent Ludo
+# Reinforcement Learning Agents for Ludo
 
-A research-grade experimental framework for training and comparing reinforcement learning agents in the game of Ludo.
+An experimental framework for training and evaluating reinforcement learning agents in the game of Ludo. This project implements multiple RL algorithms ranging from tabular methods to deep learning approaches, with a focus on modularity, reproducibility, and empirical analysis.
 
-## Overview
+## Abstract
 
-This project implements a modular, hierarchical approach to reinforcement learning for Ludo, progressing from a simple random baseline to advanced search-based agents. The architecture is designed for modularity, reproducibility, and rigorous empirical analysis.
+This project explores the application of reinforcement learning to Ludo, a stochastic multi-agent board game. We implement and compare several RL algorithms including tabular Q-learning, deep Q-networks (DQN), and rule-based heuristics. The framework provides a clean interface for experimentation, with support for different reward shaping strategies, state abstractions, and learning algorithms.
 
-## Architecture
+## Features
 
-The system is built around six key pillars:
-
-1. **LudoEnv** - Environment abstraction layer (HAL) wrapping the ludopy library
-2. **State** - Immutable data transfer object for state representation
-3. **RewardShaper** - Strategy pattern for reward shaping
-4. **Agent** - Abstract interface and implementations (Random, Q-Learning, DQN, PPO, MCTS)
-5. **MetricsTracker** - Lightweight metrics collection
-6. **Trainer** - Main training orchestrator
+- **Multiple Agent Types**: Random baseline, rule-based heuristic, tabular Q-learning, and Dueling Double DQN
+- **Modular Architecture**: Clean separation between environment, agents, reward shaping, and training logic
+- **State Abstraction**: Context-aware potential-based state representation for tabular methods
+- **Reward Shaping**: Support for sparse, dense, and context-aware reward schemas
+- **Comprehensive Metrics**: Episode-level and step-level metrics with JSON/CSV export
+- **Reproducibility**: Seed management and configuration-based experiments
 
 ## Installation
+
+### Prerequisites
+
+- Python 3.8+
+- pip
+
+### Setup
 
 1. Clone the repository:
 ```bash
@@ -30,27 +35,19 @@ cd RLagentLudo
 pip install -r requirements.txt
 ```
 
-## Usage
+## Quick Start
 
 ### Basic Training
 
-Train a RandomAgent (Phase 0 baseline):
+Train a Q-Learning agent with default configuration:
 
 ```bash
 python -m src.rl_agent_ludo.main --config configs/default_config.yaml
 ```
 
-### Configuration
-
-Configuration is done via YAML files. See `configs/default_config.yaml` for an example.
-
-Key configuration options:
-- `experiment.name`: Experiment identifier
-- `agent.type`: Agent type (random, tabular_q, dqn, ppo, mcts)
-- `training.num_episodes`: Number of training episodes
-- `environment.reward_schema`: Reward shaping strategy (sparse, dense, decoupled-ila)
-
 ### Custom Experiment
+
+Run a custom experiment with specific parameters:
 
 ```bash
 python -m src.rl_agent_ludo.main \
@@ -63,27 +60,63 @@ python -m src.rl_agent_ludo.main \
 
 ```
 RLagentLudo/
-├── src/
-│   └── rl_agent_ludo/
-│       ├── agents/          # Agent implementations
-│       ├── environment/     # LudoEnv and reward shaping
-│       ├── metrics/         # MetricsTracker
-│       ├── trainer/         # Trainer orchestrator
-│       └── utils/           # State DTO, config loader
-├── configs/                 # Configuration files
+├── src/rl_agent_ludo/
+│   ├── agents/              # Agent implementations
+│   │   ├── random_agent.py
+│   │   ├── rule_based_heuristic_agent.py
+│   │   ├── QLearning_agent.py
+│   │   └── dqn_agent.py
+│   ├── environment/         # Environment wrapper and reward shaping
+│   ├── metrics/             # Metrics collection and logging
+│   ├── trainer/             # Training loop orchestrator
+│   └── utils/               # State representation, config loading, etc.
+├── configs/                 # YAML configuration files
+├── docs/                    # Documentation
+├── results/                 # Experimental results (organized by agent type)
 ├── tests/                   # Test suite
-├── results/                 # Training outputs (metrics, models)
 └── requirements.txt
 ```
 
-## Implementation Phases
+## Implemented Agents
 
-- **Phase 0**: RandomAgent baseline (~25% win rate) ✓
-- **Phase 1**: Tabular Q-Learning (manual state abstraction)
-- **Phase 1.5**: TD(λ) with eligibility traces
-- **Phase 2**: Deep Q-Network (neural networks)
-- **Phase 3**: PPO (on-policy policy gradient)
-- **Phase 4**: MCTS (AlphaLudo-style)
+### Random Agent
+Baseline agent that selects random valid actions. Expected win rate: ~25% (1/4 players).
+
+### Rule-Based Heuristic Agent
+Hand-crafted heuristic agent using priority-based scoring with phase-aware contextual multipliers. Evaluates moves based on tactical considerations (captures, safety, progress, blockades).
+
+### Tabular Q-Learning Agent
+Q-learning with context-aware state abstraction. Uses potential-based state representation (P1, P2, P3, P4, Context) and dynamic reward scaling based on game context (trailing/neutral/leading) and move potentials.
+
+### Dueling Double DQN Agent
+Deep Q-network using Dueling architecture with Double Q-learning and Prioritized Experience Replay. Employs orthogonal state abstraction for neural network input.
+
+## Configuration
+
+Experiments are configured via YAML files. Key configuration sections:
+
+- `experiment`: Experiment name and output directory
+- `agent`: Agent type and hyperparameters
+- `training`: Number of episodes, logging intervals, etc.
+- `environment`: Reward schema, player ID, seed
+
+See `configs/default_config.yaml` for a complete example.
+
+## Results
+
+Experimental results are organized by agent type in the `results/` directory:
+
+- `results/dqn/` - Deep Q-Network experiments
+- `results/q_learning/` - Tabular Q-Learning experiments
+- `results/rule_based_heuristic/` - Heuristic agent experiments
+- `results/random/` - Baseline experiments
+
+Each experiment directory contains:
+- Episode-level metrics (JSON and CSV)
+- Score debug logs (if enabled)
+- Partial snapshots at checkpoints
+
+See `docs/EXPERIMENTAL_RESULTS.md` for detailed analysis and `docs/AGENTS.md` for agent-specific theory and results.
 
 ## Development
 
@@ -97,10 +130,46 @@ pytest tests/
 
 This project follows PEP 8 style guidelines.
 
+## Documentation
+
+- `docs/AGENTS.md` - Detailed theory and results for each agent type
+- `docs/EXPERIMENTAL_RESULTS.md` - Comparative analysis and methodology
+- `docs/EXTENDING_AGENTS.md` - Guide for creating and registering custom agents
+- `docs/VISUALIZATION_README.md` - Board visualization tools
+- `docs/THEORY.md` - Theoretical foundations
+- `results/README.md` - Results directory structure
+
+## Extending the Framework
+
+To add your own agent types, see `docs/EXTENDING_AGENTS.md` for a complete guide. The framework supports custom agents through the `AgentRegistry.register_agent()` method, allowing you to add new agents without modifying core code.
+
+Quick example:
+```python
+from rl_agent_ludo.agents.base_agent import Agent
+from rl_agent_ludo.agents.agent_registry import AgentRegistry
+
+class MyAgent(Agent):
+    # Implement required methods
+    pass
+
+AgentRegistry.register_agent('my_agent', MyAgent)
+```
+
+See `examples/custom_agent_example.py` for a working example.
+
 ## License
 
-[Your License Here]
+See LICENSE file for details.
 
-## References
+## Citation
 
-See `.projectDescription/implementationPlan.md` for detailed implementation plan and research references.
+If you use this code in your research, please cite:
+
+```bibtex
+@software{rl_agent_ludo,
+  title = {Reinforcement Learning Agents for Ludo},
+  author = {Balegar, Hitesh},
+  year = {2025},
+  url = {https://github.com/yourusername/RLagentLudo}
+}
+```

@@ -1,7 +1,7 @@
 """
-Pillar 3: Agent Interface (Abstract Base Class)
+Abstract base class for all RL agents.
 
-Defines the interface that all agents must implement.
+Defines the interface that agents must implement for action selection and learning.
 """
 
 from abc import ABC, abstractmethod

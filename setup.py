@@ -11,8 +11,8 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 setup(
     name="rl-agent-ludo",
     version="0.1.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="Hitesh Balegar",
+    author_email="hiteshbalegar@gmail.com",
     description="A research-grade experimental framework for training and comparing RL agents in Ludo",
     long_description=long_description,
     long_description_content_type="text/markdown",

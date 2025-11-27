@@ -1,29 +1,27 @@
+"""
+Tabular Q-Learning agent for Ludo.
 
-from audioop import mul
-from email.policy import default
-from multiprocessing import context
-from numpy import float64, ndarray
-from typing import Any, MutableMapping, Optional, Dict
-
-
+Uses context-aware state abstraction and dynamic reward scaling based on game context
+(trailing, neutral, leading) and move potentials (kill, boost, safety, etc.).
+"""
 
 import pickle
+from collections import defaultdict
+from typing import Optional, Dict
+import numpy as np
+import random
 
 from .base_agent import Agent
-from collections import defaultdict
-import numpy as np
 from rl_agent_ludo.utils.state_abstractor import (
-    CONTEXT_LEADING, CONTEXT_TRAILING, 
-    POT_GOAL, POT_KILL, POT_BOOST, POT_SAFETY, POT_RISK, 
+    CONTEXT_LEADING, CONTEXT_TRAILING,
+    POT_GOAL, POT_KILL, POT_BOOST, POT_SAFETY, POT_RISK,
     LudoStateAbstractor,
 )
 from rl_agent_ludo.utils.state import State
-import random
+
 
 class QLearningAgent(Agent):
-    """
-    Q Learning Agent for Ludo
-    """
+    """Tabular Q-Learning with context-aware reward scaling."""
     def __init__(
         self,
         seed: Optional[int] = None,
@@ -52,18 +50,18 @@ class QLearningAgent(Agent):
         self.debug_scores = debug_scores
         self._last_score_debug = None
 
-        # Brain : Dictory mapping state tuple -> array of 4 Q values
+        # Q-table: maps state tuple -> array of 4 Q-values (one per piece)
         self.q_table = defaultdict(lambda: np.zeros(4))
 
-        # The translator : 
+        # State abstraction converts raw board state to tactical tuple
         self.state_abstractor = LudoStateAbstractor(player_id)
 
         # Store reward scaling multipliers (with defaults)
         self._setup_reward_scaling(reward_scaling)
 
-        #Tracking for updates 
+        # Track state/action for Q-update
         self.last_state_tuple = None
-        self.last_action = None  # Action index (0-3 into valid_moves)
+        self.last_action = None  # Action index into valid_moves
         self.last_piece_idx = None  # Actual piece index (0-3) that was moved
 
     
@@ -86,10 +84,8 @@ class QLearningAgent(Agent):
         """Return debug information for the last decision."""
         return self._last_score_debug
     
-    def act(self,state:State) -> int:
-        """
-        Selects an action using Epsilon Greedy Strategy
-        """
+    def act(self, state: State) -> int:
+        """Select action using epsilon-greedy policy."""
         state_tuple = self.state_abstractor.get_abstract_state(state)
         valid_moves = state.valid_moves # Indices [0,1,2,3] usually 
         
@@ -97,57 +93,45 @@ class QLearningAgent(Agent):
         decision_type = "UNKNOWN"
         selected_q = 0.0
         
-        # 1. Exploration (Random)
+        # Exploration: random action
         if random.random() < self.epsilon:
             action = random.choice(valid_moves)
             decision_type = "EXPLORATION"
         else:
-            # 2. Explotation (Greedy)
+            # Exploitation: greedy action
             q_values = self.q_table[state_tuple]
 
-            # We need to map valid_moves (action indices) to their actual piece indices
-            # to check the correct Q-values.
-            # valid_moves are indices into state.movable_pieces.
-            
             best_action = valid_moves[0]
             best_q = -float('inf')
-            
-            # Find the valid move with the highest Q-value for its corresponding piece
+
+            # Find valid move with highest Q-value for corresponding piece
             for act_idx in valid_moves:
-                # Resolve action index to piece index
+                # Map action index to piece index
                 if state.movable_pieces:
                     piece_idx = state.movable_pieces[act_idx]
                 else:
-                    piece_idx = act_idx # Fallback
-                
-                # Check Q-value for this piece
+                    piece_idx = act_idx
+
                 q_val = q_values[piece_idx]
 
-                # Check if the abstract state says this piece has 0 potential (invalid/stuck)
-                # BUT: Allow Q-table to override if it has learned this move is good
-                # This allows learning to gradually override static potential categories
-                # is_pot_null = (state_tuple[piece_idx] == 0)
-                # if is_pot_null and q_val < 25.0:  # Threshold: trust Q-table more (was 50.0)
-                #    q_val = -float('inf') # Still treat as invalid if Q-value is low
-                
                 if q_val > best_q:
                     best_q = q_val
                     best_action = act_idx
-            
+
             action = best_action
             decision_type = "GREEDY"
             if best_q == -float('inf'):
-                 decision_type = "FORCED_RANDOM"
+                decision_type = "FORCED_RANDOM"
 
-        # store the learning step 
+        # Store state/action for Q-update
         self.last_state_tuple = state_tuple
-        self.last_action = action  # Action index into valid_moves
-        
-        # Store the actual piece index that will be moved
+        self.last_action = action
+
+        # Store actual piece index that will be moved
         if state.movable_pieces and len(state.movable_pieces) > action:
             self.last_piece_idx = state.movable_pieces[action]
         else:
-            self.last_piece_idx = action  # Fallback
+            self.last_piece_idx = action
 
         # Capture debug info if enabled
         if self.debug_scores:
@@ -173,58 +157,49 @@ class QLearningAgent(Agent):
                 'components': components,
                 'decision_type': decision_type,
                 'epsilon': self.epsilon,
-                'context': state_tuple[4] # Log context (0=Trailing, 1=Neutral, 2=Leading)
+                'context': state_tuple[4]  # 0=Trailing, 1=Neutral, 2=Leading
             }
 
         return action 
     
-    def push_to_replay_buffer(self,state:State,action:int,reward:float,
-        next_state:State,done:bool,**kwargs) -> None:
+    def push_to_replay_buffer(self, state: State, action: int, reward: float,
+                             next_state: State, done: bool, **kwargs) -> None:
         """
-        Acts as a the Online learning step (bellman update)
-        We intercept the reward here to apply Context Scalling | Multipler
+        Online Q-learning update (Bellman equation).
+        
+        Applies context-aware reward scaling before updating Q-values.
         """
         if self.last_state_tuple is None:
-            return # should not happen logic flow
-        
+            return
 
-        # 1. Get Context from the state we just acted in 
-        # Tuple : (P1,P2,P3,P4,Context) -> Context is index 4
+        # Get context from state we acted in (tuple: P1,P2,P3,P4,Context)
         context = self.last_state_tuple[4]
 
-        # 2. Determine the action potential (What did we actually do?)
-        # CRITICAL FIX: Use piece index, not action index
+        # Get piece index that was actually moved
         if self.last_piece_idx is None:
-            # Fallback: assume action index equals piece index (only if movable_pieces wasn't set)
             piece_idx = self.last_action
         else:
             piece_idx = self.last_piece_idx
-        
-        # Get potential of the piece we actually moved
+
+        # Get potential of the piece we moved
         action_potential = self.last_state_tuple[piece_idx]
 
-        # 3. Apply Dynamic Reward Scaling
-        scaled_reward = self._scale_reward(reward,action_potential,context)
+        # Apply context-based reward scaling
+        scaled_reward = self._scale_reward(reward, action_potential, context)
 
-        # 4. Calculate Target Q Value 
+        # Calculate target Q-value (standard Q-learning: max over next state)
         next_state_tuple = self.state_abstractor.get_abstract_state(next_state)
         next_q_values = self.q_table[next_state_tuple]
-        max_next_q = np.max(next_q_values) # standard Q learning (max over all actions)
+        max_next_q = np.max(next_q_values)
 
-        # 5. Update Q value for the correct piece
-        # CRITICAL FIX: Use piece index, not action index
+        # Bellman update: Q(s,a) = Q(s,a) + α[r + γ*max Q(s',a') - Q(s,a)]
         current_q = self.q_table[self.last_state_tuple][piece_idx]
-
-        # 6. Update Q value in table using bellman update formula which is 
-        # Q(s,a) = Q(s,a) + learning_rate * (reward + discount_factor * max_next_q - Q(s,a))
         new_q = current_q + self.learning_rate * (scaled_reward + (self.gamma * max_next_q) - current_q)
 
         self.q_table[self.last_state_tuple][piece_idx] = new_q
 
-        # Note: Epsilon decay moved to on_episode_end() to decay once per episode, not per step
-
     def _setup_reward_scaling(self, reward_scaling: Optional[Dict] = None):
-        """Setup reward scaling multipliers from config or use defaults."""
+        """Set up reward scaling multipliers from config or use defaults."""
         if reward_scaling is None:
             reward_scaling = {}
         
@@ -249,10 +224,8 @@ class QLearningAgent(Agent):
         self.leading_scaling = {**default_leading, **leading}
         self.neutral_scaling = reward_scaling.get('neutral', {'multiplier': 1.0})
 
-    def _scale_reward(self,base_reward:float , potential: int , context:int) -> float:
-        """
-        Applies the context-based multipliers to the base reward
-        """
+    def _scale_reward(self, base_reward: float, potential: int, context: int) -> float:
+        """Apply context-based multipliers to base reward."""
         multiplier = 1.0
         
         # Map potential constants to string keys
@@ -275,29 +248,23 @@ class QLearningAgent(Agent):
         return base_reward * multiplier
 
     def on_episode_end(self) -> None:
-        """
-        Called once at the end of each episode.
-        Decay epsilon here (once per episode, not per step).
-        """
-        # Decay epsilon once per episode
+        """Decay epsilon once per episode (not per step)."""
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
-    
-    def save(self,filepath:str) -> None:
-        # convert defaultdict to dict for pickling
+
+    def save(self, filepath: str) -> None:
+        """Save Q-table and epsilon to file."""
         data = {
-            'q_table': dict(self.q_table),
+            'q_table': dict(self.q_table),  # Convert defaultdict to dict for pickling
             'epsilon': self.epsilon
         }
-        
         with open(filepath, 'wb') as f:
             pickle.dump(data, f)
-    
-    def load(self,filepath:str) -> None:
+
+    def load(self, filepath: str) -> None:
+        """Load Q-table and epsilon from file."""
         with open(filepath, 'rb') as f:
             data = pickle.load(f)
-            
-        self.epsilon = data['epsilon']
 
-        # restore defaultdict structure 
+        self.epsilon = data['epsilon']
         self.q_table = defaultdict(lambda: np.zeros(4))
         self.q_table.update(data['q_table'])

@@ -1,7 +1,40 @@
 """
-Pillar 3: AgentRegistry (Factory Pattern)
+Agent factory.
 
-Factory for creating agent instances from configuration.
+Creates agent instances from configuration dictionaries.
+
+Built-in agents are automatically registered. Custom agents can be registered
+using the register_agent() method without modifying this file.
+
+Example - Using built-in agents:
+    config = {'type': 'random', 'seed': 42}
+    agent = AgentRegistry.create_agent(config)
+
+Example - Registering a custom agent:
+    from rl_agent_ludo.agents.base_agent import Agent
+    from rl_agent_ludo.agents.agent_registry import AgentRegistry
+    
+    class MyCustomAgent(Agent):
+        def act(self, state):
+            # Your implementation
+            pass
+        
+        @property
+        def is_on_policy(self):
+            return False
+        
+        @property
+        def needs_replay_learning(self):
+            return True
+    
+    # Register before creating agents
+    AgentRegistry.register_agent('my_custom', MyCustomAgent)
+    
+    # Now you can use it in config files
+    config = {'type': 'my_custom', 'param1': 'value1'}
+    agent = AgentRegistry.create_agent(config)
+
+See docs/EXTENDING_AGENTS.md for a complete guide on creating custom agents.
 """
 
 from typing import Dict, Any, Optional
@@ -17,6 +50,10 @@ class AgentRegistry:
     Factory for creating agent instances from configuration.
     
     Implements Factory pattern to decouple agent creation from configuration.
+    
+    Built-in agents (random, q_learning, dqn, rule_based_heuristic) are
+    automatically available. Custom agents can be registered using
+    register_agent() without modifying this file.
     """
     
     # Registry of available agent types
@@ -35,11 +72,46 @@ class AgentRegistry:
     @classmethod
     def register_agent(cls, name: str, agent_class: type) -> None:
         """
-        Register a new agent type.
+        Register a new agent type for use in configuration files.
+        
+        This method allows you to add custom agents without modifying
+        agent_registry.py. Register your agent before calling create_agent().
         
         Args:
-            name: Agent type name
+            name: Agent type name (used in config files as 'type: name')
             agent_class: Agent class (must be subclass of Agent)
+        
+        Raises:
+            TypeError: If agent_class is not a subclass of Agent
+        
+        Example:
+            # Define your custom agent
+            class MyAgent(Agent):
+                def __init__(self, my_param=10):
+                    self.my_param = my_param
+                
+                def act(self, state):
+                    return state.valid_moves[0]
+                
+                @property
+                def is_on_policy(self):
+                    return False
+                
+                @property
+                def needs_replay_learning(self):
+                    return False
+            
+            # Register it
+            AgentRegistry.register_agent('my_agent', MyAgent)
+            
+            # Now use it in config or code
+            config = {'type': 'my_agent', 'my_param': 20}
+            agent = AgentRegistry.create_agent(config)
+        
+        Note:
+            Registration persists for the lifetime of the Python process.
+            Register agents before creating instances, typically at module
+            import time or in your main script before loading configs.
         """
         if not issubclass(agent_class, Agent):
             raise TypeError(f"agent_class must be subclass of Agent, got {agent_class}")
@@ -97,7 +169,14 @@ class AgentRegistry:
         """
         Get list of available agent type names.
         
+        Includes both built-in agents and any custom agents registered
+        via register_agent().
+        
         Returns:
-            List of available agent type names
+            List of available agent type names (e.g., ['random', 'q_learning', 'dqn', ...])
+        
+        Example:
+            available = AgentRegistry.get_available_agents()
+            print(f"Available agents: {available}")
         """
         return list(cls._agent_classes.keys())

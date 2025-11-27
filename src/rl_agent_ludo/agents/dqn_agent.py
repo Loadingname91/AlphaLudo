@@ -1,8 +1,8 @@
 """
-Dueling Double DQN Agent
+Dueling Double DQN Agent for Ludo.
 
-Implements Dueling DQN with Double Learning, Prioritized Replay,
-and N-step returns for Ludo.
+Uses Dueling DQN architecture with Double Q-Learning, Prioritized Experience Replay,
+and orthogonal state abstraction.
 """
 
 import torch
@@ -17,9 +17,7 @@ from ..utils.prioritized_replay_buffer import PrioritizedReplayBuffer
 
 
 class DQNAgent(Agent):
-    """
-    Dueling Double DQN Agent with Prioritized Experience Replay.
-    """
+    """Dueling Double DQN with Prioritized Experience Replay."""
     
     def __init__(
         self,
@@ -44,35 +42,6 @@ class DQNAgent(Agent):
         debug_scores: bool = False,
         **kwargs  # Accept any extra params to prevent errors
     ):
-        """
-        Initialize DQN Agent.
-        
-        Args:
-            learning_rate: Learning rate for optimizer
-            gamma: Discount factor
-            epsilon_start: Initial exploration rate
-            epsilon_end: Final exploration rate
-            epsilon_decay: Epsilon decay per episode
-            batch_size: Batch size for learning
-            buffer_size: Replay buffer size
-            target_update_freq: Steps between target network updates
-            device: 'cpu' or 'cuda'
-            debug_scores: Enable score debugging (logs Q-values, decisions, etc.)
-        """
-        """
-        Initialize DQN Agent.
-        
-        Args:
-            learning_rate: Learning rate for optimizer
-            gamma: Discount factor
-            epsilon_start: Initial exploration rate
-            epsilon_end: Final exploration rate
-            epsilon_decay: Epsilon decay per episode
-            batch_size: Batch size for learning
-            buffer_size: Replay buffer size
-            target_update_freq: Steps between target network updates
-            device: 'cpu' or 'cuda'
-        """
         super().__init__()
         
         # Handle discount_factor alias
@@ -107,8 +76,7 @@ class DQNAgent(Agent):
         # Optimizer
         self.optimizer = optim.Adam(self.online_net.parameters(), lr=learning_rate)
         
-        # Replay buffer with configurable PER parameters
-        # Ensure all parameters are proper types (handle YAML conversion)
+        # Prioritized experience replay buffer
         self.replay_buffer = PrioritizedReplayBuffer(
             capacity=int(buffer_size),
             alpha=float(per_alpha),
@@ -118,15 +86,7 @@ class DQNAgent(Agent):
         )
     
     def act(self, state: State) -> int:
-        """
-        Select action using epsilon-greedy policy with action masking.
-        
-        Args:
-            state: Current state
-            
-        Returns:
-            Action index (0-3)
-        """
+        """Select action using epsilon-greedy policy with action masking."""
         valid_actions = state.valid_moves
         decision_type = "UNKNOWN"
         selected_q = 0.0
@@ -186,16 +146,7 @@ class DQNAgent(Agent):
     
     def push_to_replay_buffer(self, state: State, action: int, reward: float,
                              next_state: State, done: bool, **kwargs):
-        """
-        Add experience to replay buffer.
-        
-        Args:
-            state: Current state
-            action: Action taken
-            reward: Reward received
-            next_state: Next state
-            done: Whether episode terminated
-        """
+        """Add experience to prioritized replay buffer."""
         # Convert states to feature vectors
         phi_s = self.abstractor.get_orthogonal_state(state)
         phi_s_next = self.abstractor.get_orthogonal_state(next_state)
@@ -204,9 +155,7 @@ class DQNAgent(Agent):
         self.replay_buffer.add(phi_s, action, reward, phi_s_next, done)
     
     def learn_from_replay(self, *args, **kwargs):
-        """
-        Learn from replay buffer using Double DQN loss.
-        """
+        """Learn from replay buffer using Double DQN with prioritized sampling."""
         if self.replay_buffer.size < self.batch_size:
             return
         
@@ -227,8 +176,8 @@ class DQNAgent(Agent):
         q_values = self.online_net(states)
         q_selected = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)
         
-        # Double DQN: action selection with online, evaluation with target
-        with torch.no_grad():
+            # Double DQN: select action with online net, evaluate with target net
+            with torch.no_grad():
             next_q_online = self.online_net(next_states)
             next_actions = next_q_online.argmax(1)
             next_q_target = self.target_net(next_states)
@@ -236,10 +185,10 @@ class DQNAgent(Agent):
             
             targets = rewards + (self.gamma * next_q_selected * ~dones)
         
-        # Calculate TD-errors for priority update
+        # Calculate TD-errors for priority updates
         td_errors = (targets - q_selected).abs().detach().cpu().numpy()
-        
-        # Huber loss with importance sampling
+
+        # Huber loss with importance sampling weights
         loss = torch.nn.functional.smooth_l1_loss(q_selected, targets, reduction='none')
         weighted_loss = (weights * loss).mean()
         
@@ -249,28 +198,25 @@ class DQNAgent(Agent):
         torch.nn.utils.clip_grad_norm_(self.online_net.parameters(), max_norm=10.0)
         self.optimizer.step()
         
-        # Update priorities
+        # Update priorities in replay buffer
         self.replay_buffer.update_priorities(indices, td_errors)
-        
-        # Store debug information if enabled
+
+        # Store debug info if enabled
         if self.debug_scores:
             self._last_td_error = float(td_errors.mean())
             self._last_loss = float(weighted_loss.item())
-            # Update last score debug with learning info if it exists
             if self._last_score_debug is not None:
                 self._last_score_debug['td_error'] = self._last_td_error
                 self._last_score_debug['loss'] = self._last_loss
                 self._last_score_debug['buffer_size'] = int(self.replay_buffer.size)
-        
+
         self.step_count += 1
-        
-        # Update target network
+
+        # Periodically update target network
         if self.step_count % self.target_update_freq == 0:
             self.target_net.load_state_dict(self.online_net.state_dict())
-            if self.debug_scores:
-                # Log target network update
-                if self._last_score_debug is not None:
-                    self._last_score_debug['target_network_updated'] = True
+            if self.debug_scores and self._last_score_debug is not None:
+                self._last_score_debug['target_network_updated'] = True
     
     def on_episode_end(self):
         """Called at the end of each episode."""

@@ -1,7 +1,8 @@
 """
-Pillar 2: RewardShaper (Strategy Pattern)
+Reward shaping strategies.
 
-Implements Strategy design pattern for reward logic, decoupling environment from reward heuristics.
+Implements strategy pattern to allow switching reward heuristics without modifying environment code.
+Supports sparse, dense, and context-aware reward schemas.
 """
 
 from abc import ABC, abstractmethod
