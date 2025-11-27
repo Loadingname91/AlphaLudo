@@ -57,3 +57,4 @@ Thumbs.db
 *.pth
 *.h5
 *.ckpt
+*.*
