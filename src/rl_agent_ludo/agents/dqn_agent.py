@@ -12,6 +12,7 @@ from typing import Optional
 from .base_agent import Agent
 from ..utils.state import State
 from ..utils.orthogonal_state_abstractor import OrthogonalStateAbstractor
+from ..utils.augmented_raw_state_abstractor import AugmentedRawStateAbstractor
 from .modules.dueling_dqn_network import DuelingDQNNetwork
 from ..utils.prioritized_replay_buffer import PrioritizedReplayBuffer
 
@@ -40,6 +41,7 @@ class DQNAgent(Agent):
         seed: int = None,
         player_id: int = 0,
         debug_scores: bool = False,
+        state_representation: str = "orthogonal",  # "orthogonal" or "augmented_raw"
         **kwargs  # Accept any extra params to prevent errors
     ):
         super().__init__()
@@ -56,6 +58,7 @@ class DQNAgent(Agent):
         self.epsilon_decay = epsilon_decay
         self.batch_size = batch_size
         self.target_update_freq = target_update_freq
+        self.train_freq = kwargs.get('train_freq', 1) # New parameter for training frequency
         self.step_count = 0
         
         # Debugging
@@ -64,12 +67,29 @@ class DQNAgent(Agent):
         self._last_td_error = None
         self._last_loss = None
         
-        # State abstraction
-        self.abstractor = OrthogonalStateAbstractor()
+        # State abstraction selection
+        self.state_representation = state_representation
+        if state_representation == "augmented_raw":
+            self.abstractor = AugmentedRawStateAbstractor()
+            self.input_dim = 90
+            self.hidden_dim = 256  # Increased capacity for higher-dimensional input
+            self.get_state_vector = self.abstractor.get_augmented_state
+        else:
+            # Default to orthogonal
+            self.abstractor = OrthogonalStateAbstractor()
+            self.input_dim = 31
+            self.hidden_dim = 128
+            self.get_state_vector = self.abstractor.get_orthogonal_state
         
         # Networks
-        self.online_net = DuelingDQNNetwork().to(self.device)
-        self.target_net = DuelingDQNNetwork().to(self.device)
+        self.online_net = DuelingDQNNetwork(
+            input_dim=self.input_dim,
+            hidden_dim=self.hidden_dim
+        ).to(self.device)
+        self.target_net = DuelingDQNNetwork(
+            input_dim=self.input_dim,
+            hidden_dim=self.hidden_dim
+        ).to(self.device)
         self.target_net.load_state_dict(self.online_net.state_dict())
         self.target_net.eval()  # Target network in eval mode
         
@@ -86,76 +106,104 @@ class DQNAgent(Agent):
         )
     
     def act(self, state: State) -> int:
-        """Select action using epsilon-greedy policy with action masking."""
-        valid_actions = state.valid_moves
+        """
+        Select action using epsilon-greedy policy.
+        
+        IMPORTANT:
+        - Network outputs Q-values per PIECE index (0-3).
+        - The environment expects an ACTION index into `current_move_pieces`
+          (i.e. into `state.movable_pieces`), not a raw piece index.
+        
+        We therefore:
+        1. Use Q-values indexed by piece_id (0-3).
+        2. Restrict to the set of movable pieces for this turn.
+        3. Return the index into that movable list so that the env maps it
+           back to the correct piece_id.
+        """
+        # `movable_pieces` is a list of piece IDs (0-3) that can move this turn.
+        # Fallback: if it's missing/empty, pretend all four pieces are candidates.
+        movable_pieces = (
+            list(state.movable_pieces)
+            if getattr(state, "movable_pieces", None) is not None
+            else list(range(4))
+        )
+        if len(movable_pieces) == 0:
+            movable_pieces = list(range(4))
+
         decision_type = "UNKNOWN"
         selected_q = 0.0
         q_values_all = None
+        chosen_piece_idx = None  # Actual piece ID (0-3) we intend to move
+        env_action = 0           # Index into `movable_pieces`, returned to env
         
+        # Epsilon-greedy over the set of MOVABLE PIECES
         if np.random.random() < self.epsilon:
-            # Exploration: random valid action
-            action = np.random.choice(valid_actions)
             decision_type = "EXPLORATION"
+            # Sample uniformly among legal moves for this turn
+            env_action = int(np.random.randint(0, len(movable_pieces)))
             
-            # Still compute Q-values for debugging
             if self.debug_scores:
-                phi_s = self.abstractor.get_orthogonal_state(state)
+                phi_s = self.get_state_vector(state)
                 phi_s_tensor = torch.FloatTensor(phi_s).to(self.device)
                 with torch.no_grad():
                     q_values_all = self.online_net(phi_s_tensor).cpu().numpy()
-                selected_q = float(q_values_all[action])
+                chosen_piece_idx = int(movable_pieces[env_action])
+                selected_q = float(q_values_all[chosen_piece_idx])
         else:
-            # Exploitation: greedy action with masking
             decision_type = "EXPLOITATION"
-            phi_s = self.abstractor.get_orthogonal_state(state)
+            phi_s = self.get_state_vector(state)
             phi_s_tensor = torch.FloatTensor(phi_s).to(self.device)
-            
             with torch.no_grad():
                 q_values_all = self.online_net(phi_s_tensor).cpu().numpy()
-            
-            # Mask invalid actions
-            masked_q = np.full(4, -np.inf)
-            for action in valid_actions:
-                masked_q[action] = q_values_all[action]
-            
-            action = np.argmax(masked_q)
-            selected_q = float(q_values_all[action])
+
+            # Evaluate Q ONLY on movable pieces, then map back to an env action index
+            candidate_qs = [q_values_all[int(p)] for p in movable_pieces]
+            best_idx = int(np.argmax(candidate_qs))
+            env_action = best_idx
+            chosen_piece_idx = int(movable_pieces[best_idx])
+            selected_q = float(candidate_qs[best_idx])
         
         # Store debug information if enabled
         if self.debug_scores:
             components = {}
-            for i in range(4):
-                if q_values_all is not None:
-                    components[f'q_piece_{i}'] = float(q_values_all[i])
-                else:
-                    components[f'q_piece_{i}'] = 0.0
+            if q_values_all is not None:
+                for i in range(4):
+                    components[f"q_piece_{i}"] = float(q_values_all[i])
+            else:
+                for i in range(4):
+                    components[f"q_piece_{i}"] = 0.0
             
             self._last_score_debug = {
-                'action': int(action),
-                'dice_roll': int(state.dice_roll),
-                'total_score': float(selected_q),
-                'components': components,
-                'decision_type': decision_type,
-                'epsilon': float(self.epsilon),
-                'valid_actions': [int(a) for a in valid_actions],
-                'buffer_size': int(self.replay_buffer.size),
-                'step_count': int(self.step_count)
+                "action": int(env_action),                 # index into movable_pieces
+                "piece_idx": int(chosen_piece_idx) if chosen_piece_idx is not None else None,
+                "dice_roll": int(state.dice_roll),
+                "total_score": float(selected_q),
+                "components": components,
+                "decision_type": decision_type,
+                "epsilon": float(self.epsilon),
+                "movable_pieces": [int(p) for p in movable_pieces],
+                "buffer_size": int(self.replay_buffer.size),
+                "step_count": int(self.step_count),
             }
         
-        return action
+        return env_action
     
     def push_to_replay_buffer(self, state: State, action: int, reward: float,
                              next_state: State, done: bool, **kwargs):
         """Add experience to prioritized replay buffer."""
         # Convert states to feature vectors
-        phi_s = self.abstractor.get_orthogonal_state(state)
-        phi_s_next = self.abstractor.get_orthogonal_state(next_state)
+        phi_s = self.get_state_vector(state)
+        phi_s_next = self.get_state_vector(next_state)
         
         # Add to buffer (priority will be set on first sample)
         self.replay_buffer.add(phi_s, action, reward, phi_s_next, done)
     
     def learn_from_replay(self, *args, **kwargs):
         """Learn from replay buffer using Double DQN with prioritized sampling."""
+        # Respect training frequency
+        if self.step_count % self.train_freq != 0:
+            return
+
         if self.replay_buffer.size < self.batch_size:
             return
         
@@ -176,8 +224,8 @@ class DQNAgent(Agent):
         q_values = self.online_net(states)
         q_selected = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)
         
-            # Double DQN: select action with online net, evaluate with target net
-            with torch.no_grad():
+        # Double DQN: select action with online net, evaluate with target net
+        with torch.no_grad():
             next_q_online = self.online_net(next_states)
             next_actions = next_q_online.argmax(1)
             next_q_target = self.target_net(next_states)
@@ -242,11 +290,21 @@ class DQNAgent(Agent):
             'optimizer_state_dict': self.optimizer.state_dict(),
             'epsilon': self.epsilon,
             'step_count': self.step_count,
+            'input_dim': self.input_dim,
+            'state_representation': self.state_representation
         }, filepath)
     
     def load(self, filepath: str):
         """Load agent model/parameters from file."""
         checkpoint = torch.load(filepath, map_location=self.device)
+        
+        # Check if input_dim matches
+        saved_input_dim = checkpoint.get('input_dim', 31) # Default to 31 (old models)
+        if saved_input_dim != self.input_dim:
+            print(f"Warning: Loading model with input_dim={saved_input_dim} into agent with input_dim={self.input_dim}")
+            # We might need to re-init network if dimensions don't match, 
+            # but for now just warn and let torch error if shapes mismatch
+        
         self.online_net.load_state_dict(checkpoint['online_net_state_dict'])
         self.target_net.load_state_dict(checkpoint['target_net_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

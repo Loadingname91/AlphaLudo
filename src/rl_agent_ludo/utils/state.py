@@ -24,6 +24,7 @@ class State:
     abstract_state: tuple    # For tabular methods (hashable)
     valid_moves: List[int]   # List of valid action indices
     dice_roll: int           # Current dice roll (1-6)
+    current_player: int      # The player ID (0-3) whose perspective this state represents
 
     player_pieces : List[int]  # 4 pieces for current player
     enemy_pieces : List[List[int]]  # 3 enemies, each with 4 pieces (in their own coordinate systems)

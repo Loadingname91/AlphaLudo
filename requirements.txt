@@ -8,7 +8,7 @@ ludopy>=1.3.0
 
 # Analysis dependencies (for offline analysis, not for training loop)
 # pandas>=2.0.0
-# matplotlib>=3.7.0  # For offline analysis plots (not used in training loop)
+matplotlib>=3.7.0  # For visualization tools and offline analysis plots
 # seaborn>=0.12.0
 
 # Visualization (optional - for real-time board rendering)

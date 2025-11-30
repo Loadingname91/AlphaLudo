@@ -302,6 +302,7 @@ class LudoEnv:
             abstract_state=abstract_state,
             valid_moves=valid_moves,
             dice_roll=dice_roll,
+            current_player=self.current_player,  # Add current_player context
             movable_pieces=movable_pieces,   # Agent uses this to know WHICH piece moves
             player_pieces=list(pieces),      # Agent uses this for physics (Analyzer)
             enemy_pieces=[list(ep) for ep in enemy_pieces], #  Agent uses this for threats
@@ -338,6 +339,7 @@ class LudoEnv:
             abstract_state=abstract_state,
             valid_moves=valid_moves,
             dice_roll=dice_roll,
+            current_player=player_id,  # Add current_player context
             movable_pieces=None,
             player_pieces=list(pieces),
             enemy_pieces=[list(ep) for ep in enemy_pieces]

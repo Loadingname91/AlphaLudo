@@ -70,6 +70,18 @@ def main():
         default=None,
         help='Override number of episodes from config'
     )
+    parser.add_argument(
+        '--resume-from',
+        type=str,
+        default=None,
+        help='Path to checkpoint file to resume training from (e.g., checkpoints/dqn_dueling_augmented_raw/agent_episode_8000.pth)'
+    )
+    parser.add_argument(
+        '--resume-run-path',
+        type=str,
+        default=None,
+        help='Path to existing run output directory to resume logging (e.g., results/dqn/.../experiment_timestamp)'
+    )
     args = parser.parse_args()
 
     if args.visualize:
@@ -131,13 +143,30 @@ def main():
         # Fallback: assume agent type is in top-level config
         agent = AgentRegistry.create_agent({'type': config['agent']['type']})
     
+    # Load checkpoint if resuming
+    resume_checkpoint = args.resume_from
+    if resume_checkpoint:
+        if not os.path.exists(resume_checkpoint):
+            print(f"Error: Checkpoint file not found: {resume_checkpoint}")
+            sys.exit(1)
+        print(f"Resuming from checkpoint: {resume_checkpoint}")
+        # Load agent weights from checkpoint
+        if hasattr(agent, 'load'):
+            agent.load(resume_checkpoint)
+            print("Agent weights loaded successfully")
+        else:
+            print(f"Warning: Agent type {type(agent).__name__} does not support loading checkpoints")
+            sys.exit(1)
+    
     # Create trainer
     trainer_config = config.get('training', {})
     trainer = Trainer(
         env=env,
         agent=agent,
         config=config,
-        use_context_aware_rewards=trainer_config.get('use_context_aware_rewards', False)
+        use_context_aware_rewards=trainer_config.get('use_context_aware_rewards', False),
+        resume_from_checkpoint=resume_checkpoint,
+        resume_run_path=args.resume_run_path
     )
     
     # Run training

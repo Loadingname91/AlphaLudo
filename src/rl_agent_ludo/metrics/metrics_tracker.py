@@ -1,10 +1,3 @@
-"""
-Metrics collection and logging.
-
-Lightweight metrics tracker with no analysis dependencies.
-Collects raw training data and exports to JSON/CSV for offline analysis.
-"""
-
 import json
 import csv
 import os
@@ -20,13 +13,14 @@ class MetricsTracker:
     Exports raw data to JSON/CSV for offline analysis via analysis.py.
     """
     
-    def __init__(self, experiment_name: str, output_dir: str = "results"):
+    def __init__(self, experiment_name: str, output_dir: str = "results", resume: bool = False):
         """
         Initialize metrics tracker.
         
         Args:
             experiment_name: Name of the experiment (used in output filenames)
             output_dir: Directory to save metrics files (default: "results")
+            resume: Whether to attempt loading existing metrics from output_dir
         """
         self.experiment_name = experiment_name
         self.output_dir = output_dir
@@ -52,8 +46,34 @@ class MetricsTracker:
         self.wins = 0
         self.losses = 0
         
+        # Load existing metrics if resuming
+        if resume:
+            self._load_existing_metrics()
+        
         # Optional score debugging lines (human-readable, space-efficient)
         self.score_debug_lines: List[str] = []
+
+    def _load_existing_metrics(self):
+        """Load existing metrics from JSON if available."""
+        episodes_path = os.path.join(self.output_dir, f"{self.experiment_name}_episodes.json")
+        if os.path.exists(episodes_path):
+            try:
+                with open(episodes_path, 'r') as f:
+                    self.episodes = json.load(f)
+                
+                if self.episodes:
+                    last_ep = self.episodes[-1]
+                    self.current_episode = last_ep.get('episode', 0) + 1
+                    self.total_episodes = len(self.episodes)
+                    self.total_steps = last_ep.get('total_steps', 0) # Approximate
+                    
+                    # Recalculate wins/losses
+                    self.wins = sum(1 for e in self.episodes if e.get('won', False))
+                    self.losses = sum(1 for e in self.episodes if e.get('lost', False)) # or not won?
+                    
+                    print(f"Resumed metrics: Loaded {len(self.episodes)} episodes. Next episode: {self.current_episode}")
+            except Exception as e:
+                print(f"Warning: Failed to load existing metrics: {e}")
     
     def log_metrics(
         self,
@@ -178,6 +198,9 @@ class MetricsTracker:
         """
         saved_files = {}
         
+        # Ensure output directory exists
+        os.makedirs(self.output_dir, exist_ok=True)
+        
         # Save episodes to JSON
         episodes_json_path = os.path.join(
             self.output_dir, 
@@ -286,6 +309,9 @@ class MetricsTracker:
             Dictionary with filepaths of saved files for this snapshot.
         """
         saved_files: Dict[str, str] = {}
+        
+        # Ensure output directory exists
+        os.makedirs(self.output_dir, exist_ok=True)
 
         # Episodes snapshot
         episodes_json_path = os.path.join(

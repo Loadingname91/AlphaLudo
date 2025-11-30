@@ -4,11 +4,19 @@ This document presents the experimental methodology, results, and comparative an
 
 ## Methodology
 
+### Research Questions
+
+The experimental design is driven by three core questions:
+
+1. **Reward Shaping (RQ1)**: How do different reward schemas (sparse, context-aware, enhanced dense) affect convergence speed and final performance?
+2. **State Representation (RQ2)**: Given a fixed algorithm and reward schema, how do orthogonal vs augmented raw state representations impact learning efficiency and asymptotic win rate?
+3. **Algorithmic Variant (RQ3)**: Does Double DQN (with dueling architecture) provide a statistically significant improvement over vanilla DQN in this stochastic multi-agent environment?
+
 ### Experimental Setup
 
 **Environment**:
 - Game: Ludo (4-player variant)
-- Opponents: Random agents (baseline)
+- Opponents: Random agents (baseline) unless otherwise stated
 - Starting Player: Rotates across episodes to reduce first-player bias
 
 **Evaluation Metrics**:
@@ -18,10 +26,35 @@ This document presents the experimental methodology, results, and comparative an
 - **Learning Curves**: Win rate and reward over training episodes
 - **Context Distribution**: For context-aware agents, frequency of trailing/neutral/leading contexts
 
-**Training Configuration**:
-- Episodes per run: [TBD - varies by agent]
-- Evaluation: Performance measured over final N episodes
-- Seeds: Multiple runs with different seeds for statistical significance
+### Standard Training Protocol
+
+To make results comparable and publishable, all deep RL experiments follow a standardized protocol:
+
+- **Training Budget (per run)**:
+  - Fixed number of training episodes per configuration.
+  - Typical budgets:
+    - Tabular Q-Learning: **30k** episodes per run.
+    - Earlier DQN/DDQN baseline runs (orthogonal + sparse/dense): **40k** episodes per run.
+    - Current DDQN experiments with enhanced dense rewards and augmented raw state: **70k** episodes per run.
+  - Same budget across all variants within a given study (e.g. reward-ablation, state-ablation).
+
+- **Random Seeds**:
+  - Each configuration is run with multiple seeds (typically 3–5 distinct seeds).
+  - Reported numbers are mean ± standard deviation across seeds.
+
+- **Train vs Evaluation**:
+  - **Training phase**: ε-greedy exploration with decaying ε as defined in the config.
+  - **Evaluation phase**: After training, agents are evaluated with ε = 0 (greedy policy) for a fixed number of episodes (e.g. 1,000 games).
+  - All reported “final win rates” refer to this post-training evaluation unless explicitly noted.
+
+- **Metrics and Logging**:
+  - Episode-level metrics are logged via `MetricsTracker` (win flag, total reward, episode length, cumulative win rate).
+  - Optional score-debug logs capture Q-values, TD-errors, and decision types for selected agents.
+
+- **Opponents and Environment**:
+  - Opponent pool (e.g. 3 random agents) and environment configuration are kept fixed within each study so that only the intended factor (reward, state, algorithm) varies.
+
+This protocol follows best practices from RL evaluation literature (e.g. Henderson et al., 2018, *Deep RL that Matters*), emphasizing multiple seeds and clear separation of training and evaluation.
 
 ### Reward Schemas
 
@@ -30,17 +63,35 @@ This document presents the experimental methodology, results, and comparative an
 - Loss: -100
 - Draw: 0
 
-**Dense Rewards** (when applicable):
+**Event-Based Dense Rewards** (earlier DQN/Q-learning experiments):
 - Goal entry: +100
 - Capture: +50
 - Safety (globe/home stretch): +15
 - Boost (star jump): +10
-- Neutral progress: +1
+- Neutral move: +1
 - Death: -20
 
-**Context-Aware Rewards** (Q-Learning):
-- Base rewards scaled by context and move potential
-- See `docs/AGENTS.md` for detailed scaling factors
+**Enhanced Dense Rewards** (current Dueling DQN + augmented raw experiments):
+- **Major events** (same base as above):
+  - Goal entry: +100
+  - Capture: +50
+  - Safety: +15
+  - Boost: +10
+  - Death: -20
+- **Progress shaping**:
+  - Piece activation (leave home): +5
+  - Forward progress: +0.5 per tile moved forward
+  - Home-stretch entry (final corridor): +20 bonus
+  - Additional distance-based bonus for moves in the last third of the board
+- **Board-control shaping**:
+  - Multi-piece bonus: +2 × (pieces_on_board − 1) for maintaining multiple active pieces
+  - Position bonus: +0.3 × average normalized distance-to-goal over all own pieces
+
+These enhanced dense rewards are implemented in `EnhancedDenseRewardShaper` and are designed to provide a richer learning signal for high-dimensional raw state representations.
+
+**Context-Aware Rewards** (Tabular Q-Learning and some ablations):
+- Base rewards scaled by game context (trailing / neutral / leading) and move potential.
+- See `docs/AGENTS.md` and the Q-Learning agent docs for detailed scaling factors.
 
 ## Results by Agent
 
@@ -142,7 +193,7 @@ This document presents the experimental methodology, results, and comparative an
 
 ### Dueling Double DQN Agent
 
-**Configuration**:
+**Configuration (legacy baseline runs)**:
 - Learning Rate: 0.0001
 - Discount Factor: 0.99
 - Epsilon: 1.0 → 0.01 (decays per episode)
@@ -151,7 +202,7 @@ This document presents the experimental methodology, results, and comparative an
 - Target Update Frequency: 1000 steps
 - 2 experiments, 40,000 episodes each
 
-**Results** (across 2 experiments):
+**Results** (across 2 experiments, orthogonal state, legacy reward setup):
 - Final Win Rate: 32.0% ± 15.6%
 - Initial Win Rate: 25.5% ± 2.1%
 - Improvement: +6.5 percentage points (25% relative improvement)
@@ -183,11 +234,32 @@ This document presents the experimental methodology, results, and comparative an
 - Less interpretable than tabular Q-learning
 - Longer training time required
 
-**Key Observations**:
-- High variance suggests need for more experiments or hyperparameter tuning
-- Best run performance (43%) matches Q-learning, showing potential
-- Requires more episodes than tabular Q-learning for similar performance
-- Prioritized replay and dueling architecture appear beneficial
+**Key Observations (legacy runs)**:
+- High variance suggests need for more experiments or hyperparameter tuning.
+- Best run performance (43%) matches Q-learning, showing potential.
+- Requires more episodes than tabular Q-learning for similar performance.
+- Prioritized replay and dueling architecture appear beneficial.
+
+#### Ongoing DDQN Experiments (Standardized Protocol)
+
+Following the updated methodology, a new wave of DDQN experiments is being run with:
+
+- **State Representations**:
+  - Orthogonal (31-dim)
+  - Augmented raw (90-dim)
+- **Reward Schemas**:
+  - Sparse, context-aware, and **enhanced dense** (progress + board-control shaping via `EnhancedDenseRewardShaper`)
+- **Training Budget**:
+  - **70,000 episodes per run** for DDQN (for all reward / state variants in the new study).
+- **Evaluation**:
+  - Post-training evaluation with ε = 0 over a fixed number of episodes (e.g. 1,000 games) for each seed.
+- **Reproducibility**:
+  - Multiple seeds per condition (e.g. 5 seeds), with results aggregated as mean ± std.
+- **Results Logging**:
+  - Runs organized as `results/dqn/reward_{schema}/seed_{seed}/{experiment_name}_{timestamp}/`.
+  - A dedicated experiment log for DDQN (`docs/DDQN_EXPERIMENT_LOG.md`) tracks per-condition and per-seed progress.
+
+Updated quantitative results for these standardized DDQN experiments will replace or extend the legacy numbers above once all runs and evaluations are complete.
 
 ---
 

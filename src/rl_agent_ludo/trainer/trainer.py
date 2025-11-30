@@ -35,7 +35,9 @@ class Trainer:
         config: Dict[str, Any],
         logger: Optional[logging.Logger] = None,
         experiment_logger: Optional[Any] = None,
-        use_context_aware_rewards:bool = False # for checking in context aware rewards
+        use_context_aware_rewards:bool = False, # for checking in context aware rewards
+        resume_from_checkpoint: Optional[str] = None,
+        resume_run_path: Optional[str] = None  # Path to existing run directory to resume logging
     ):
         """
         Initialize trainer.
@@ -59,18 +61,69 @@ class Trainer:
         self.seed = config['training'].get('seed', None)
         self.log_interval = config['training'].get('log_interval', 100)
         self.save_interval = config['training'].get('save_interval', None)
-
-        # Metrics tracker (per-run, timestamped output directory)
+        
+        # ---------------------------------------------------------------------
+        # Metrics tracker (per-run, structured output directory)
+        #
+        # Directory structure:
+        #   {output_dir}/
+        #       {agent_type}/
+        #           reward_{reward_schema}/
+        #               seed_{seed}/
+        #                   {experiment_name}_{timestamp}/
+        #
+        # This makes it easy to inspect runs per reward schema and per seed.
+        # ---------------------------------------------------------------------
         experiment_name = config['experiment'].get('name', 'default_experiment')
         base_output_dir = config['experiment'].get('output_dir', 'results')
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        run_output_dir = os.path.join(base_output_dir, f"{experiment_name}_{timestamp}")
-        self.metrics_tracker = MetricsTracker(experiment_name, run_output_dir)
+        
+        # Extract agent type to create a subdirectory
+        agent_type = config['agent'].get('type', 'unknown_agent')
+        
+        # Ensure base_output_dir includes agent type if not already present
+        if agent_type not in base_output_dir:
+            base_output_dir = os.path.join(base_output_dir, agent_type)
+        
+        # Determine reward schema (from env) and seed (from training/experiment/env)
+        reward_schema = getattr(env, "reward_schema", None) or config.get('environment', {}).get('reward_schema', 'unknown')
+        seed_value = (
+            self.seed
+            or getattr(env, "seed", None)
+            or config.get('experiment', {}).get('seed', None)
+        )
+        seed_str = str(seed_value) if seed_value is not None else "unknown"
+        
+        # Enrich directory structure with reward schema and seed
+        base_output_dir = os.path.join(
+            base_output_dir,
+            f"reward_{reward_schema}",
+            f"seed_{seed_str}",
+        )
+            
+        if resume_run_path:
+            # Use existing run directory
+            run_output_dir = resume_run_path
+            self.logger.info(f"Resuming logging in existing directory: {run_output_dir}")
+            resume_metrics = True
+        else:
+            # Create new timestamped directory
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            run_output_dir = os.path.join(base_output_dir, f"{experiment_name}_{timestamp}")
+            resume_metrics = False
+            
+        self.metrics_tracker = MetricsTracker(experiment_name, run_output_dir, resume=resume_metrics)
         self.run_output_dir = run_output_dir  # optional: for logging/introspection
         
         # Training state
         self.episode_count = 0
         self.step_count = 0
+        
+        # Resume from checkpoint
+        self.start_episode = 0
+        if resume_from_checkpoint:
+            self.start_episode = self._extract_episode_from_checkpoint(resume_from_checkpoint)
+            self.episode_count = self.start_episode
+            self.logger.info(f"Resuming training from episode {self.start_episode}")
         
         # Context-aware reward shaper
         self.use_context_aware_rewards = use_context_aware_rewards
@@ -140,15 +193,18 @@ class Trainer:
         # Create progress bar
         pbar = tqdm(
             total=self.num_episodes,
+            initial=self.start_episode,
             desc="Training",
             unit="ep",
             ncols=100,
             bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
         )
+        if self.start_episode > 0:
+            pbar.update(0)  # Initialize progress bar at start_episode
         
         start_time = time.time()
         
-        for episode in range(self.num_episodes):
+        for episode in range(self.start_episode, self.num_episodes):
             # Set episode number BEFORE reset so seed can use it
             self.metrics_tracker.current_episode = episode
             self.env.set_episode(episode)
@@ -313,15 +369,18 @@ class Trainer:
         # Create progress bar
         pbar = tqdm(
             total=self.num_episodes,
+            initial=self.start_episode,
             desc="Training",
             unit="ep",
             ncols=100,
             bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
         )
+        if self.start_episode > 0:
+            pbar.update(0)  # Initialize progress bar at start_episode
         
         start_time = time.time()
         
-        for episode in range(self.num_episodes):
+        for episode in range(self.start_episode, self.num_episodes):
             # Set episode number BEFORE reset so seed can use it
             self.metrics_tracker.current_episode = episode
             self.env.set_episode(episode)
@@ -631,3 +690,23 @@ class Trainer:
             logger.addHandler(handler)
         
         return logger
+    
+    def _extract_episode_from_checkpoint(self, checkpoint_path: str) -> int:
+        """
+        Extract episode number from checkpoint filename.
+        
+        Args:
+            checkpoint_path: Path to checkpoint file (e.g., 'checkpoints/agent_episode_8000.pth')
+            
+        Returns:
+            Episode number extracted from filename, or 0 if not found
+        """
+        import re
+        filename = os.path.basename(checkpoint_path)
+        # Match pattern like "agent_episode_8000.pth"
+        match = re.search(r'episode_(\d+)', filename)
+        if match:
+            return int(match.group(1))
+        else:
+            self.logger.warning(f"Could not extract episode number from checkpoint filename: {filename}")
+            return 0
