@@ -34,9 +34,9 @@ setup(
     extras_require={
         "dev": ["pytest>=7.4.0", "pytest-cov>=4.1.0"],
     },
-    entry_points={
-        "console_scripts": [
-            "rl-agent-ludo=rl_agent_ludo.main:main",
-        ],
-    },
+    # entry_points={
+    #     "console_scripts": [
+    #         "rl-agent-ludo=rl_agent_ludo.main:main",
+    #     ],
+    # },
 )

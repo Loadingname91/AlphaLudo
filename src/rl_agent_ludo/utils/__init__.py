@@ -1,8 +1,6 @@
-"""Utility modules."""
+"""
+Utility functions for RL Agent Ludo.
 
-from .state import State
-from .orthogonal_state_abstractor import OrthogonalStateAbstractor
-from .prioritized_replay_buffer import PrioritizedReplayBuffer
-from .sum_tree import SumTree
+Contains state definitions, reward shaping, and helper functions.
+"""
 
-__all__ = ['State', 'OrthogonalStateAbstractor', 'PrioritizedReplayBuffer', 'SumTree']

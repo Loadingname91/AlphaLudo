@@ -1,45 +1,31 @@
 """
-State data transfer object.
+State representation for Ludo environment.
 
-Immutable dataclass that encapsulates all state information passed from environment to agent.
+This file defines the State dataclass that encapsulates all state information
+passed from the environment to the agent.
 """
 
 from dataclasses import dataclass
 from typing import List, Optional
-import numpy as np
 
 
-@dataclass(frozen=True)
+@dataclass
 class State:
     """
-    Immutable state representation.
+    State object containing all information about the current game state.
     
     Attributes:
-        full_vector: NumPy array for neural network input (continuous features)
-        abstract_state: Hashable tuple for tabular methods (discrete state)
+        player_pieces: List of 4 piece positions for the learning agent
+        enemy_pieces: List of 3 lists, each containing 4 enemy piece positions
+        current_player: ID of player whose turn it is (0-3)
+        dice_roll: Current dice roll (1-6)
         valid_moves: List of valid action indices
-        dice_roll: Current dice roll value (1-6)
+        movable_pieces: Optional list of piece indices that can move this turn
     """
-    full_vector: np.ndarray  # For neural networks
-    abstract_state: tuple    # For tabular methods (hashable)
-    valid_moves: List[int]   # List of valid action indices
-    dice_roll: int           # Current dice roll (1-6)
-    current_player: int      # The player ID (0-3) whose perspective this state represents
+    player_pieces: List[int]
+    enemy_pieces: List[List[int]]
+    current_player: int
+    dice_roll: int
+    valid_moves: List[int]
+    movable_pieces: Optional[List[int]] = None
 
-    player_pieces : List[int]  # 4 pieces for current player
-    enemy_pieces : List[List[int]]  # 3 enemies, each with 4 pieces (in their own coordinate systems)
-    movable_pieces : Optional[List[int]] = None  # Piece indices that can move (0-3)
-
-    def __post_init__(self):
-        """Validate state after initialization."""
-        if self.dice_roll < 1 or self.dice_roll > 6:
-            raise ValueError(f"dice_roll must be between 1 and 6, got {self.dice_roll}")
-        
-        if len(self.valid_moves) == 0:
-            raise ValueError("valid_moves cannot be empty (always at least one valid action: pass)")
-        
-        if not isinstance(self.full_vector, np.ndarray):
-            raise TypeError(f"full_vector must be numpy.ndarray, got {type(self.full_vector)}")
-        
-        if not isinstance(self.abstract_state, tuple):
-            raise TypeError(f"abstract_state must be tuple, got {type(self.abstract_state)}")

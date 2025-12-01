@@ -30,9 +30,13 @@ A naive state representation tracking exact positions of all pieces results in a
 
 ### 1.3 Core Solution Philosophy
 
-Instead of tracking **positions**, we abstract **capabilities**. The agent learns to recognize strategic opportunities (e.g., "I can kill an enemy," "I can reach safety") rather than memorizing board configurations. This capability-based abstraction:
+Instead of tracking **positions**, we abstract **capabilities and threats**. The agent
+learns to recognize strategic opportunities (e.g., "I can kill an enemy," "I can reach safety")
+and dangers ("this piece is about to be killed") rather than memorizing board configurations.
+This capability-and-threat based abstraction:
 
-- Reduces state space from $10^{28}$ to $7,203$ states (manageable for tabular methods)
+- Reduces state space from $10^{28}$ to $|S| = 7^4 \times 3 \times 2^4 = 115{,}248$ abstract
+  states (still manageable for tabular methods)
 - Enables generalization across similar strategic situations
 - Preserves the Markov property while dramatically improving sample efficiency
 
@@ -42,13 +46,17 @@ Instead of tracking **positions**, we abstract **capabilities**. The agent learn
 
 ### 2.1 State Representation
 
-The abstract state is a 5-tuple of integers:
+The abstract state is a 9-tuple of integers:
 
-$$S = (F_{P1}, F_{P2}, F_{P3}, F_{P4}, C)$$
+$$S = (F_{P1}, F_{P2}, F_{P3}, F_{P4}, C, T_1, T_2, T_3, T_4)$$
 
 Where:
 - $F_{Pi}$ represents the **Potential** (capability) of piece $i$ after simulating its move
 - $C$ represents the **Context** (game phase: Leading/Neutral/Trailing)
+- $T_i \in \{0,1\}$ is a **threat flag** for piece $i$:
+  - $T_i = 1$ if piece $i$ is currently in a square that can be captured by any enemy
+    in 1–6 steps (using the same threat logic as POT\_RISK).
+  - $T_i = 0$ otherwise.
 
 ### 2.2 Piece Potentials: Capability Classification
 
@@ -87,8 +95,11 @@ $$\text{Gap} = \text{My\_Score} - \max(\text{Opponent\_Scores})$$
 ### 2.4 State Space Reduction
 
 - **Raw State Space:** $58^{16} \approx 10^{28}$ states
-- **Abstract State Space:** $7^4 \times 3 = 7,203$ states
-- **Reduction Factor:** $\approx 10^{24}$ (fits in L1 cache for extreme speed)
+- **Abstract State Space (legacy 5-tuple):** $7^4 \times 3 = 7{,}203$ states
+- **Abstract State Space (threat-augmented 9-tuple used in this work):**
+  $$|S| = 7^4 \times 3 \times 2^4 = 115{,}248$$
+- **Reduction Factor vs raw positions:** still $\approx 10^{23}$–$10^{24}$, while encoding
+  both tactical opportunities and explicit per-piece threats
 
 ### 2.5 State Abstraction Algorithm
 
@@ -107,7 +118,9 @@ FUNCTION get_abstract_state(state):
         context = NEUTRAL
     
     // Step 2: Calculate potential for each piece
+    // Step 2: Calculate potential for each piece
     potentials = []
+    threat_flags = []
     FOR each piece i in [P1, P2, P3, P4]:
         IF piece cannot move:
             potential = NULL
@@ -130,8 +143,18 @@ FUNCTION get_abstract_state(state):
                 potential = NEUTRAL
         
         potentials.append(potential)
+
+        // Threat flag on current square (not next_position)
+        IF is_threatened(piece.position, enemy_pieces):
+            threat_flags.append(1)
+        ELSE:
+            threat_flags.append(0)
     
-    RETURN (potentials[0], potentials[1], potentials[2], potentials[3], context)
+    RETURN (
+        potentials[0], potentials[1], potentials[2], potentials[3],
+        context,
+        threat_flags[0], threat_flags[1], threat_flags[2], threat_flags[3],
+    )
 ```
 
 ---
@@ -187,7 +210,12 @@ FUNCTION scale_reward(base_reward, potential, context):
     RETURN base_reward × multiplier
 ```
 
-**Theoretical Justification:** This reward shaping preserves optimality (potential-based reward shaping theorem) while dramatically accelerating learning by providing clear signals about which actions are valuable in which contexts.
+**Theoretical Note:** The design is **inspired** by potential-based reward shaping
+results, but because the scaling depends on both potential and context (and not solely
+on a single potential function over states), it should be treated as a **heuristic
+shaping scheme** rather than a strictly optimality-preserving transformation of the
+original MDP. In practice, it dramatically accelerates learning and yields stronger
+policies in our experiments.
 
 ---
 
@@ -522,7 +550,9 @@ Under standard Q-learning assumptions (all state-action pairs visited infinitely
 ### 8.2 Sample Efficiency
 
 - **Without Abstraction:** $\approx 10^{28}$ states → intractable
-- **With Abstraction:** $7,203$ states → feasible (convergence in ~10,000-15,000 episodes)
+- **With Threat-Augmented Abstraction:** $|S| = 115{,}248$ states → still feasible for
+  tabular Q-learning (convergence in $\mathcal{O}(10^4$–$10^5)$ episodes, depending on
+  opponent strength and exploration schedule)
 
 ### 8.3 Generalization
 
