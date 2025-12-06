@@ -1,0 +1,39 @@
+# Default configuration for RL Agent Ludo
+
+
+
+# Experiment settings
+experiment:
+  name: "rule_based_heuristic"
+  seed: 45
+  output_dir: "results"
+
+# Agent configuration
+agent:
+  type: "rule_based_heuristic"
+  # Rule-based heuristic agent specific config
+  seed: 45
+  debug_scores: true
+
+# Environment configuration
+environment:
+  reward_schema: "sparse"  # Options: sparse, dense, decoupled-ila
+  player_id: 0
+  render: false  # Set to true to visualize board in real-time using OpenCV
+  # Opponent agents (for future phases)
+  # opponent_agents: []
+  # opponent_schedule: {}
+
+# Training configuration
+training:
+  num_episodes: 1000
+  max_steps_per_episode: 10000
+  log_interval: 500  # Log every N episodes
+  save_interval: 500  # Save checkpoint every N episodes (null = never)
+  checkpoint_dir: "checkpoints"
+  enable_score_debug: true  # When true, attach score breakdowns to step metrics and save partial snapshots at checkpoints
+
+# Logging configuration (optional)
+# logging:
+#   tensorboard_dir: "logs/tensorboard"
+#   wandb_project: "rl-agent-ludo"

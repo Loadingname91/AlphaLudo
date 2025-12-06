@@ -1,0 +1,84 @@
+# Q-Learning Agent with Context-Aware Reward Shaping Configuration
+# This config enables the full context-aware potential-based reward system
+
+# Experiment settings
+experiment:
+  name: "q_learning_context_aware"
+  seed: 42
+  output_dir: "results"
+
+# Agent configuration
+agent:
+  seed: 42
+  type: "q_learning"
+  player_id: 0
+  debug_scores: true  # Ensure this is true
+  
+  # Q-Learning hyperparameters
+  learning_rate: 0.05             # Alpha: how quickly agent learns (0.0-1.0) - REDUCED for stability
+  discount_factor: 0.9            # Gamma: importance of future rewards (0.0-1.0)
+  epsilon: 1.0                    # Initial exploration rate (start high for exploration)
+  epsilon_decay: 0.9999           # How quickly epsilon decreases per episode - SLOWER decay
+  min_epsilon: 0.05               # Minimum exploration rate (never fully greedy) - HIGHER for more exploration
+
+  # Context-aware reward scaling multipliers
+  # These are applied to base rewards based on game context and action potential
+  reward_scaling:
+    # When trailing (Panic Mode: Gap < -20)
+    trailing:
+      kill: 1.5        # (+75) Desperate times call for kills
+      boost: 1.2       # (+12) Need speed to catch up
+      safety: 0.8      # (+12) Hiding won't help us win now
+      risk: 0.5        # (-5)  Penalty for danger is halved -> encourages risk-taking!
+    
+    # When leading (Lockdown Mode: Gap > 20)
+    leading:
+      kill: 0.8        # (+40) Don't chase kills if it exposes us
+      safety: 2.0      # (+30) PARAMOUNT. Defense wins championships.
+      risk: 1.5      # (-25) Massive penalty. Do not throw the game.
+    
+    # When neutral (Race Mode: -20 <= Gap <= 20)
+    neutral:
+      multiplier: 1.0  # Standard play
+
+
+
+# Environment configuration
+environment:
+  reward_schema: "sparse"          # Use sparse as base, context-aware rewards computed separately
+  player_id: 0
+  render: false                    # Set to true for visualization (slows training)
+  # opponent_agents: []            # Can specify opponent agents here
+  # opponent_schedule: {}          # Curriculum learning schedule
+
+# Reward Shaper configuration
+reward_shaper:
+  enabled: true                    # Enable context-aware reward shaping
+  player_id: 0
+  
+  # Base reward values (tunable)
+  base_rewards:
+    goal: 100.0                    # Reward for reaching goal
+    kill: 50.0                     # Reward for capturing enemy piece
+    safety: 15.0                   # Reward for moving to safe position
+    boost: 10.0                    # Reward for star jump boost
+    neutral: 1.0                   # Reward for normal move
+    death: -20.0                   # Penalty for being sent home
+    suicide: -10.0                 # Penalty for risky moves that backfire
+
+# Training configuration
+training:
+  num_episodes: 30000              # Total training episodes 
+  max_steps_per_episode: 10000    # Maximum steps per episode (safety limit)
+  log_interval: 1000             # Log metrics every N episodes
+  save_interval: 2000               # Save checkpoint every N episodes (null = never)
+  checkpoint_dir: "checkpoints"
+  enable_score_debug: true        # Detailed score breakdowns (slower)
+  
+  # Context-aware reward system
+  use_context_aware_rewards: true  # Enable context-aware reward computation in trainer
+
+# Logging configuration (optional)
+# logging:
+#   tensorboard_dir: "logs/tensorboard"
+#   wandb_project: "rl-agent-ludo"
