@@ -20,6 +20,7 @@ from rl_agent_ludo.environment.level4_stochastic import Level4StochasticLudo
 from rl_agent_ludo.environment.level5_multiagent import Level5MultiAgentLudo
 from rl_agent_ludo.agents.simple_dqn import SimpleDQNAgent
 from rl_agent_ludo.environment.enhanced_visualizer import EnhancedCurriculumVisualizer
+from rl_agent_ludo.environment.standard_board_visualizer import StandardLudoBoardVisualizer
 
 
 def extract_positions_level1(env):
@@ -81,8 +82,8 @@ def demo_level_visual(level_num, level_name, env, agent, extract_fn, num_episode
         num_players = 4
         tokens_per_player = 2
 
-    # Create visualizer
-    viz = EnhancedCurriculumVisualizer(level_num, num_players, tokens_per_player)
+    # Create visualizer (use standard board layout)
+    viz = StandardLudoBoardVisualizer(level_num, num_players, tokens_per_player)
 
     try:
         for ep in range(num_episodes):

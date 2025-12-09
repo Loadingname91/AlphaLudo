@@ -2,6 +2,8 @@
 
 ## 🎮 Commands to Watch Agents Play (with CV2 Graphics)
 
+> **Note**: For detailed information about the standard Ludo board visualizer, see [docs/STANDARD_BOARD_VISUALIZER.md](docs/STANDARD_BOARD_VISUALIZER.md)
+
 ### Quick Start
 
 ```bash

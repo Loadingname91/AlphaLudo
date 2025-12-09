@@ -1,6 +1,8 @@
-# Comparison with Ludo_Game_AI Repository
+# Comparison with Reference Repository
 
-## Reference Repository Results
+Comprehensive comparison between our curriculum-based Ludo RL implementation and the reference Ludo_Game_AI repository.
+
+## Reference Repository
 [Ludo_Game_AI by raffaele-aurucci](https://github.com/raffaele-aurucci/Ludo_Game_AI)
 
 ### Their Configuration

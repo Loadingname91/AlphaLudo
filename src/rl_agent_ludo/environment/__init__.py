@@ -1,16 +1,12 @@
 """
 Gymnasium environment registration for Ludo.
+
+Curriculum-based environments for progressive learning.
 """
 
 from gymnasium.envs.registration import register
 
-register(
-    id="Ludo-v0",
-    entry_point="rl_agent_ludo.environment.ludoEnv:LudoEnv",
-    max_episode_steps=10000,
-)
-
-# Unified Ludo Environments (Egocentric Physics approach)
+# Unified Ludo Environments (used in tests and advanced training)
 register(
     id="UnifiedLudo-2Tokens-v0",
     entry_point="rl_agent_ludo.environment.unifiedLudoEnv:UnifiedLudoEnv2Tokens",
@@ -23,3 +19,6 @@ register(
     max_episode_steps=10000,
 )
 
+# Curriculum Level Environments (used in main training pipeline)
+# Level 1-5 environments are imported directly when needed
+# Example: from rl_agent_ludo.environment.level1_simple import Level1SimpleLudo
