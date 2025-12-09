@@ -314,6 +314,71 @@ class _UnifiedLudoEnvBase(gym.Env):
                     min_target = max(min_target, target_magnitude)
         
         return min_target
+    
+    def expand_state_with_relative_features(self, state: State) -> np.ndarray:
+        """
+        Expand state vector with relative features for Coach training.
+        
+        This adds explicit relative position information that the Coach needs
+        to predict win probability accurately (satisfies Markov Property).
+        
+        Adds:
+        - Relative distances: (My_Token_Pos - Enemy_Token_Pos) % 52 for nearest threats
+        - Collision risk flags: Boolean indicators if enemy is within 1-6 steps behind
+        
+        Args:
+            state: Current game state
+            
+        Returns:
+            Expanded state vector (original + relative features)
+        """
+        # Start with the standard observation vector
+        base_obs = self._state_to_obs(state)
+        
+        # Calculate relative features
+        relative_features = []
+        
+        # For each of our tokens, calculate relative distances to nearest enemy threats
+        for token_idx in range(self.tokens_per_player):
+            my_pos = state.player_pieces[token_idx]
+            
+            if my_pos == HOME_INDEX or my_pos == GOAL_INDEX:
+                # No relative features for home/goal tokens
+                relative_features.extend([0.0, 0.0])  # [nearest_threat_distance, collision_risk]
+                continue
+            
+            # Find nearest enemy threat behind us
+            nearest_threat_dist = 52.0  # Max distance
+            collision_risk = 0.0
+            
+            for enemy in state.enemy_pieces:
+                for e_pos in enemy:
+                    if e_pos == HOME_INDEX or e_pos == GOAL_INDEX:
+                        continue
+                    if e_pos in GLOBE_INDEXES or e_pos in STAR_INDEXES:
+                        continue  # Safe zones
+                    
+                    # Calculate distance (enemy behind us)
+                    dist = (my_pos - e_pos) % 52
+                    # If enemy is 1-6 steps behind, we're in collision risk
+                    if 1 <= (-dist % 52) <= 6:
+                        collision_risk = 1.0  # Boolean flag
+                        nearest_threat_dist = min(nearest_threat_dist, (-dist % 52))
+            
+            # Normalize distance (0-6 steps -> 0.0-1.0, or 1.0 if no threat)
+            if nearest_threat_dist < 52.0:
+                normalized_dist = nearest_threat_dist / 6.0  # 0-1 scale
+            else:
+                normalized_dist = 1.0  # No threat
+            
+            relative_features.append(normalized_dist)
+            relative_features.append(collision_risk)
+        
+        # Convert to numpy array and concatenate
+        relative_features_array = np.array(relative_features, dtype=np.float32)
+        expanded_obs = np.concatenate([base_obs, relative_features_array])
+        
+        return expanded_obs
 
     def _simulate_move(self, current_pos: int, dice_roll: int) -> int:
         """Simulate a move from current position."""
@@ -362,16 +427,22 @@ class _UnifiedLudoEnvBase(gym.Env):
     GOAL_TOKEN_REWARD = 20.0  # Banking a token is always good
     
     # PBRS Weights
-    # Potential = W_PROG * Progress + W_SAFE * Safety
+    # Potential = W_PROG * Progress + W_SAFE * Safety + W_LEAD * Lead + W_COLLISION * CollisionRisk
     # Scale: Progress (0-1) * 100 ~ 100. Safety (0-1) * 20 ~ 20.
     W_PROGRESS = 50.0  # High weight to drive forward motion
     W_SAFE = 10.0  # Moderate weight to prefer safe spots
+    W_LEAD = 15.0  # Bonus for having a lead token (encourages racing)
+    W_COLLISION = -20.0  # Penalty for collision risk (encourages defensive play when needed)
 
     def _calculate_potential(self, state: State) -> float:
         """
-        Calculate the Potential Phi(s) of a state.
+        Calculate the Potential Phi(s) of a state (Improved Manual PBRS).
         
-        Phi(s) = W_PROG * Sum(Progress) + W_SAFE * Sum(IsSafe)
+        Phi(s) = W_PROG * Sum(Progress) + W_SAFE * Sum(IsSafe) + W_LEAD * LeadBonus + W_COLLISION * CollisionRisk
+        
+        Improvements:
+        - Lead Token Bonus: Rewards having a token that's ahead of others (encourages racing)
+        - Collision Threat Penalty: Penalizes tokens in danger of being captured (encourages defensive awareness)
         
         This is computed statelessly from the state object to ensure robustness.
         """
@@ -394,7 +465,42 @@ class _UnifiedLudoEnvBase(gym.Env):
         
         safety_potential = safe_count * self.W_SAFE
         
-        return progress_potential + safety_potential
+        # 3. Lead Token Bonus (Phase 1 Improvement)
+        # Reward having a token that's significantly ahead of others
+        # This encourages the agent to race with at least one token
+        lead_bonus = 0.0
+        if self.tokens_per_player > 1:
+            progressions = [self._get_normalized_progress(state.player_pieces[i]) for i in range(self.tokens_per_player)]
+            max_progress = max(progressions)
+            # Bonus is proportional to how far ahead the lead token is
+            # If all tokens are at similar positions, bonus is small
+            # If one token is far ahead, bonus is large
+            progressions_sorted = sorted(progressions, reverse=True)
+            if len(progressions_sorted) >= 2:
+                lead_gap = progressions_sorted[0] - progressions_sorted[1]  # Gap between 1st and 2nd
+                # Normalize: gap of 0.5 (half the board) = full bonus
+                lead_bonus = min(lead_gap * 2.0, 1.0)  # Cap at 1.0
+        
+        lead_potential = lead_bonus * self.W_LEAD
+        
+        # 4. Collision Threat Penalty (Phase 1 Improvement)
+        # Penalize tokens that are in immediate danger of being captured
+        # This encourages defensive play when necessary
+        total_collision_risk = 0.0
+        for i in range(self.tokens_per_player):
+            pos = state.player_pieces[i]
+            # Only penalize if token is on the board and vulnerable
+            if pos != HOME_INDEX and pos != GOAL_INDEX and pos not in GLOBE_INDEXES and pos not in STAR_INDEXES:
+                # Get threat level (already calculated in _get_threat_behind)
+                threat = self._get_threat_behind(pos, state.enemy_pieces)
+                # High threat (near 1.0) means high collision risk
+                total_collision_risk += threat
+        
+        # Normalize by number of tokens (average risk per token)
+        avg_collision_risk = total_collision_risk / max(self.tokens_per_player, 1)
+        collision_penalty = avg_collision_risk * self.W_COLLISION  # Negative value
+        
+        return progress_potential + safety_potential + lead_potential + collision_penalty
 
     def _compute_reward_and_done(
         self, prev_state: Optional[State], current_state: State, action: int
