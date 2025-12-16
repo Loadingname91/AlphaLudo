@@ -19,17 +19,17 @@ def load_results(results_file):
 def plot_win_rates(results, output_dir):
     """Plot win rates across all levels."""
     levels = ['level1', 'level2', 'level3', 'level4', 'level5']
+    if 'level6' in results['levels']:
+        levels.append('level6')
+
     level_names = [results['levels'][l]['level'] for l in levels]
     win_rates = [results['levels'][l]['win_rate'] * 100 for l in levels]
-    targets = [90, 85, 75, 62, 52]  # Target win rates for each level
 
-    fig, ax = plt.subplots(figsize=(12, 7))
+    fig, ax = plt.subplots(figsize=(14, 7))
 
     x = np.arange(len(levels))
-    width = 0.35
 
-    bars1 = ax.bar(x - width/2, win_rates, width, label='Achieved', color='#2ecc71', alpha=0.8)
-    bars2 = ax.bar(x + width/2, targets, width, label='Target', color='#3498db', alpha=0.6)
+    bars = ax.bar(x, win_rates, label='Win Rate', color='#2ecc71', alpha=0.8)
 
     ax.set_xlabel('Curriculum Level', fontsize=12, fontweight='bold')
     ax.set_ylabel('Win Rate (%)', fontsize=12, fontweight='bold')
@@ -42,12 +42,11 @@ def plot_win_rates(results, output_dir):
     ax.set_ylim(0, 100)
 
     # Add value labels on bars
-    for bars in [bars1, bars2]:
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height,
-                   f'{height:.1f}%',
-                   ha='center', va='bottom', fontsize=9, fontweight='bold')
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height,
+               f'{height:.1f}%',
+               ha='center', va='bottom', fontsize=9, fontweight='bold')
 
     plt.tight_layout()
     plt.savefig(output_dir / 'win_rates.png', dpi=300, bbox_inches='tight')
@@ -58,11 +57,14 @@ def plot_win_rates(results, output_dir):
 def plot_rewards(results, output_dir):
     """Plot average rewards with error bars."""
     levels = ['level1', 'level2', 'level3', 'level4', 'level5']
+    if 'level6' in results['levels']:
+        levels.append('level6')
+
     level_names = [results['levels'][l]['level'] for l in levels]
     avg_rewards = [results['levels'][l]['avg_reward'] for l in levels]
     std_rewards = [results['levels'][l]['std_reward'] for l in levels]
 
-    fig, ax = plt.subplots(figsize=(12, 7))
+    fig, ax = plt.subplots(figsize=(14, 7))
     x = np.arange(len(levels))
 
     bars = ax.bar(x, avg_rewards, color='#9b59b6', alpha=0.7, yerr=std_rewards,
@@ -92,11 +94,14 @@ def plot_rewards(results, output_dir):
 def plot_episode_lengths(results, output_dir):
     """Plot average episode lengths."""
     levels = ['level1', 'level2', 'level3', 'level4', 'level5']
+    if 'level6' in results['levels']:
+        levels.append('level6')
+
     level_names = [results['levels'][l]['level'] for l in levels]
     avg_lengths = [results['levels'][l]['avg_length'] for l in levels]
     std_lengths = [results['levels'][l]['std_length'] for l in levels]
 
-    fig, ax = plt.subplots(figsize=(12, 7))
+    fig, ax = plt.subplots(figsize=(14, 7))
     x = np.arange(len(levels))
 
     bars = ax.bar(x, avg_lengths, color='#e74c3c', alpha=0.7, yerr=std_lengths,
@@ -125,31 +130,31 @@ def plot_episode_lengths(results, output_dir):
 def plot_comprehensive_dashboard(results, output_dir):
     """Create a comprehensive dashboard with all metrics."""
     levels = ['level1', 'level2', 'level3', 'level4', 'level5']
-    level_names = ['L1', 'L2', 'L3', 'L4', 'L5']
+    if 'level6' in results['levels']:
+        levels.append('level6')
 
-    fig = plt.figure(figsize=(16, 10))
+    level_names = ['L1', 'L2', 'L3', 'L4', 'L5']
+    if 'level6' in results['levels']:
+        level_names.append('L6')
+
+    fig = plt.figure(figsize=(18, 10))
     gs = fig.add_gridspec(2, 3, hspace=0.3, wspace=0.3)
 
     # 1. Win Rate Progression
     ax1 = fig.add_subplot(gs[0, :2])
     win_rates = [results['levels'][l]['win_rate'] * 100 for l in levels]
-    targets = [90, 85, 75, 62, 52]
 
     x = np.arange(len(levels))
     ax1.plot(x, win_rates, marker='o', linewidth=3, markersize=10,
-             color='#2ecc71', label='Achieved')
-    ax1.plot(x, targets, marker='s', linewidth=2, markersize=8,
-             color='#3498db', linestyle='--', label='Target', alpha=0.7)
-    ax1.fill_between(x, win_rates, targets, where=(np.array(win_rates) >= np.array(targets)),
-                      color='green', alpha=0.1)
+             color='#2ecc71', label='Win Rate')
     ax1.set_xlabel('Level', fontweight='bold')
     ax1.set_ylabel('Win Rate (%)', fontweight='bold')
-    ax1.set_title('Win Rate: Achieved vs Target', fontweight='bold')
+    ax1.set_title('Win Rate Progression Across Levels', fontweight='bold')
     ax1.set_xticks(x)
     ax1.set_xticklabels(level_names)
     ax1.legend()
     ax1.grid(alpha=0.3)
-    ax1.set_ylim(40, 100)
+    ax1.set_ylim(0, 100)
 
     # 2. Rewards Comparison
     ax2 = fig.add_subplot(gs[0, 2])
@@ -175,19 +180,17 @@ def plot_comprehensive_dashboard(results, output_dir):
     ax4.axis('off')
 
     table_data = []
-    table_data.append(['Level', 'Win Rate', 'Avg Reward', 'Avg Length', 'Status'])
+    table_data.append(['Level', 'Win Rate', 'Avg Reward', 'Avg Length', 'Wins'])
 
     for i, level in enumerate(levels):
         data = results['levels'][level]
         wr = data['win_rate'] * 100
-        target = targets[i]
-        status = '✓ Pass' if wr >= target else '✗ Below Target'
         table_data.append([
             data['level'],
-            f"{wr:.1f}% / {target}%",
+            f"{wr:.1f}%",
             f"{data['avg_reward']:.0f}",
             f"{data['avg_length']:.1f}",
-            status
+            f"{data['wins']}/{data['num_episodes']}"
         ])
 
     table = ax4.table(cellText=table_data, cellLoc='center', loc='center',
@@ -201,19 +204,17 @@ def plot_comprehensive_dashboard(results, output_dir):
         table[(0, i)].set_facecolor('#34495e')
         table[(0, i)].set_text_props(weight='bold', color='white')
 
-    # Style data rows
+    # Style data rows with alternating colors
     for i in range(1, 6):
         for j in range(5):
-            if j == 4:  # Status column
-                if '✓' in table_data[i][j]:
-                    table[(i, j)].set_facecolor('#d5f4e6')
-                else:
-                    table[(i, j)].set_facecolor('#fadbd8')
+            if i % 2 == 0:
+                table[(i, j)].set_facecolor('#f8f9fa')
 
     ax4.set_title('Performance Summary', fontweight='bold', pad=20, fontsize=12)
 
     # Overall title
-    fig.suptitle('Curriculum Learning Results Dashboard - All 5 Levels',
+    num_levels = len(levels)
+    fig.suptitle(f'Curriculum Learning Results Dashboard - All {num_levels} Levels',
                  fontsize=16, fontweight='bold', y=0.98)
 
     plt.savefig(output_dir / 'dashboard.png', dpi=300, bbox_inches='tight')
@@ -232,16 +233,16 @@ def create_summary_report(results, output_dir):
     report.append("")
 
     levels = ['level1', 'level2', 'level3', 'level4', 'level5']
-    targets = [90, 85, 75, 62, 52]
+    if 'level6' in results['levels']:
+        levels.append('level6')
 
-    for level, target in zip(levels, targets):
+    for level in levels:
         data = results['levels'][level]
         wr = data['win_rate'] * 100
-        status = "✓ PASS" if wr >= target else "✗ BELOW TARGET"
 
         report.append(f"{data['level']}")
         report.append("-" * 40)
-        report.append(f"  Win Rate: {wr:.1f}% (Target: {target}%) {status}")
+        report.append(f"  Win Rate: {wr:.1f}%")
         report.append(f"  Wins: {data['wins']}/{data['num_episodes']}")
         report.append(f"  Avg Reward: {data['avg_reward']:.1f} ± {data['std_reward']:.1f}")
         report.append(f"  Avg Length: {data['avg_length']:.1f} ± {data['std_length']:.1f} steps")
@@ -256,14 +257,12 @@ def create_summary_report(results, output_dir):
     report.append("OVERALL SUMMARY")
     report.append("="*80)
 
-    levels_passed = sum(1 for l, t in zip(levels, targets)
-                        if results['levels'][l]['win_rate'] * 100 >= t)
-    report.append(f"Levels Passed: {levels_passed}/5")
-    report.append(f"Overall Success Rate: {levels_passed/5*100:.0f}%")
-    report.append("")
-
     avg_win_rate = np.mean([results['levels'][l]['win_rate'] * 100 for l in levels])
     report.append(f"Average Win Rate Across All Levels: {avg_win_rate:.1f}%")
+
+    total_wins = sum(results['levels'][l]['wins'] for l in levels)
+    total_episodes = sum(results['levels'][l]['num_episodes'] for l in levels)
+    report.append(f"Total Wins: {total_wins}/{total_episodes}")
     report.append("")
 
     report_text = "\n".join(report)

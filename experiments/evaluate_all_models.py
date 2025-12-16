@@ -1,5 +1,5 @@
 """
-Comprehensive evaluation of all trained models (Levels 1-5).
+Comprehensive evaluation of all trained models (Levels 1-6).
 Tests each model and saves detailed results for visualization.
 """
 
@@ -20,6 +20,7 @@ from rl_agent_ludo.environment.level3_multitoken import Level3MultiTokenLudo
 from rl_agent_ludo.environment.level4_stochastic import Level4StochasticLudo
 from rl_agent_ludo.environment.level5_multiagent import Level5MultiAgentLudo
 from rl_agent_ludo.agents.simple_dqn import SimpleDQNAgent
+from rl_agent_ludo.agents.trex_agent import TREXAgent
 
 
 def evaluate_model(env, agent, num_episodes=500, level_name="Level"):
@@ -196,6 +197,38 @@ def main():
     results5 = evaluate_model(env5, agent5, num_episodes=500, level_name="Level 5")
     all_results['levels']['level5'] = results5
 
+    # Level 6: T-REX with Learned Rewards
+    print("\n" + "="*80)
+    print("LEVEL 6: T-REX with Learned Rewards")
+    print("="*80)
+    env6 = Level5MultiAgentLudo(seed=42)
+
+    # Check if reward network exists
+    reward_network_path = "checkpoints/level6/reward_network_best.pth"
+    if Path(reward_network_path).exists():
+        agent6 = TREXAgent(
+            state_dim=16,
+            action_dim=3,
+            reward_network_path=reward_network_path,
+            hidden_dims=[128, 128],
+            device=str(device),
+            use_hybrid_rewards=True,
+            learned_reward_scale=10.0,
+            learned_reward_weight=0.3,
+        )
+        checkpoint_path = "checkpoints/level6/trex_best_ep022000_wr0.660_20251209_234539.pth"
+
+        if Path(checkpoint_path).exists():
+            agent6.load(checkpoint_path)
+            results6 = evaluate_model(env6, agent6, num_episodes=500, level_name="Level 6 (T-REX)")
+            all_results['levels']['level6'] = results6
+        else:
+            print(f"Warning: Level 6 checkpoint not found at {checkpoint_path}")
+            print("Skipping Level 6 evaluation")
+    else:
+        print(f"Warning: Reward network not found at {reward_network_path}")
+        print("Skipping Level 6 evaluation")
+
     # Save comprehensive results
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     results_file = results_dir / f"all_models_evaluation_{timestamp}.json"
@@ -206,12 +239,16 @@ def main():
     print("\n" + "="*80)
     print("COMPREHENSIVE RESULTS SUMMARY")
     print("="*80)
-    print(f"\n{'Level':<15} {'Win Rate':<15} {'Avg Reward':<20} {'Avg Length':<15}")
-    print("-" * 65)
+    print(f"\n{'Level':<20} {'Win Rate':<15} {'Avg Reward':<20} {'Avg Length':<15}")
+    print("-" * 70)
 
-    for level_key in ['level1', 'level2', 'level3', 'level4', 'level5']:
+    level_keys = ['level1', 'level2', 'level3', 'level4', 'level5']
+    if 'level6' in all_results['levels']:
+        level_keys.append('level6')
+
+    for level_key in level_keys:
         data = all_results['levels'][level_key]
-        print(f"{data['level']:<15} {data['win_rate']:.1%} ({data['wins']}/500)   "
+        print(f"{data['level']:<20} {data['win_rate']:.1%} ({data['wins']}/500)   "
               f"{data['avg_reward']:>6.1f} ± {data['std_reward']:<6.1f}   "
               f"{data['avg_length']:>5.1f} ± {data['std_length']:<5.1f}")
 

@@ -38,7 +38,7 @@ htmlcov/
 .tox/
 
 # Results and outputs
-results/
+
 checkpoints/
 logs/
 *.log
