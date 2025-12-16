@@ -4,6 +4,7 @@ Baseline agents for benchmarking.
 These simple agents serve as baselines to measure learning progress:
 - RandomAgent: Selects random valid actions
 - GreedyAgent: Always moves forward when possible
+- AlwaysMoveAgent: Always tries to move (even when invalid)
 """
 
 import numpy as np

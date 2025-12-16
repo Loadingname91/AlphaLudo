@@ -19,7 +19,7 @@ from rl_agent_ludo.environment.level3_multitoken import Level3MultiTokenLudo
 from rl_agent_ludo.environment.level4_stochastic import Level4StochasticLudo
 from rl_agent_ludo.environment.level5_multiagent import Level5MultiAgentLudo
 from rl_agent_ludo.agents.simple_dqn import SimpleDQNAgent
-from rl_agent_ludo.environment.enhanced_visualizer import EnhancedCurriculumVisualizer
+
 from rl_agent_ludo.environment.standard_board_visualizer import StandardLudoBoardVisualizer
 
 

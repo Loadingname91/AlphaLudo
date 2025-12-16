@@ -33,18 +33,19 @@ def interpret_val_loss(val_loss: float) -> tuple[str, str]:
     Interpret validation loss in terms of model learning stage.
     
     Returns:
-        Tuple of (stage, emoji) describing the learning stage
+        Tuple of (stage, symbol) describing the learning stage.
+        The symbol is an empty string (kept for compatibility).
     """
     if val_loss >= 0.693:
-        return "Random", "🎲"
+        return "Random", ""
     elif val_loss >= 0.600:
-        return "Weak", "📉"
+        return "Weak", ""
     elif val_loss >= 0.500:
-        return "Basic", "📊"
+        return "Basic", ""
     elif val_loss >= 0.450:
-        return "Learning", "📈"
+        return "Learning", ""
     else:
-        return "Expert", "🎯"
+        return "Expert", ""
 
 
 def train_coach(
@@ -77,11 +78,11 @@ def train_coach(
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     if verbose:
-        tqdm.write(f"🔧 Using device: {device}")
+        tqdm.write(f"Using device: {device}")
 
     # 1. Load Data from .npz file
     if verbose:
-        tqdm.write(f"📂 Loading trajectory data from: {trajectory_path}")
+        tqdm.write(f"Loading trajectory data from: {trajectory_path}")
     
     try:
         data = np.load(trajectory_path)
@@ -101,7 +102,7 @@ def train_coach(
         }
         
         if verbose:
-            tqdm.write(f"   ✅ Loaded {len(states):,} samples")
+            tqdm.write(f"   Loaded {len(states):,} samples")
             tqdm.write(f"   State dimension: {metadata['state_dim']}")
             tqdm.write(f"   Gamma: {metadata['gamma']:.4f}")
             if metadata['seed'] is not None:
@@ -110,7 +111,7 @@ def train_coach(
                 tqdm.write(f"   Episodes: {metadata['num_episodes']:,}")
         
     except Exception as e:
-        tqdm.write(f"❌ Failed to load data: {e}")
+        tqdm.write(f"Failed to load data: {e}")
         import traceback
         traceback.print_exc()
         return
@@ -124,7 +125,7 @@ def train_coach(
     expected_dim = 32 if tokens == 2 else 54
     
     if input_dim != expected_dim:
-        tqdm.write(f"⚠️  Warning: State dimension mismatch!")
+        tqdm.write(f"Warning: State dimension mismatch!")
         tqdm.write(f"   Expected: {expected_dim} (for {tokens} tokens)")
         tqdm.write(f"   Got: {input_dim}")
         tqdm.write(f"   Continuing anyway...")
@@ -133,7 +134,7 @@ def train_coach(
     if verbose:
         mean_label = labels.mean()
         std_label = labels.std()
-        tqdm.write(f"\n📊 Data Statistics:")
+        tqdm.write(f"\nData Statistics:")
         tqdm.write(f"   Label mean: {mean_label:.4f} (0.5 = balanced Win/Loss)")
         tqdm.write(f"   Label std: {std_label:.4f}")
         tqdm.write(f"   Label range: [{labels.min():.4f}, {labels.max():.4f}]")
@@ -146,7 +147,7 @@ def train_coach(
 
     # 4. Train/Validation Split (80/20)
     if verbose:
-        tqdm.write(f"\n🔄 Splitting data: 80% train, 20% validation...")
+        tqdm.write(f"\nSplitting data: 80% train, 20% validation...")
     
     X_train, X_val, y_train, y_val = train_test_split(
         states, labels, test_size=0.2, random_state=42, shuffle=True
@@ -175,7 +176,7 @@ def train_coach(
         hidden_dims = [128, 64]  # Smaller than DQN for faster training
     
     if verbose:
-        tqdm.write(f"\n🧠 Initializing Win Probability Network...")
+        tqdm.write(f"\nInitializing Win Probability Network...")
         tqdm.write(f"   Input dimension: {input_dim}")
         tqdm.write(f"   Hidden layers: {hidden_dims}")
         tqdm.write(f"   Output: 1 (sigmoid probability)")
@@ -190,7 +191,7 @@ def train_coach(
 
     # 7. Training Loop
     if verbose:
-        tqdm.write(f"\n🚀 Starting Coach Training...")
+        tqdm.write(f"\nStarting Coach Training...")
         tqdm.write(f"   Epochs: {epochs}")
         tqdm.write(f"   Batch size: {batch_size}")
         tqdm.write(f"   Learning rate: {learning_rate}")
@@ -270,19 +271,19 @@ def train_coach(
         if not milestones['random'] and avg_val_loss < 0.693:
             milestones['random'] = True
             if verbose:
-                tqdm.write(f"  🎯 Milestone: Passed Random Guessing (0.693) → Val Loss: {avg_val_loss:.4f}")
+                tqdm.write(f"  Milestone: Passed Random Guessing (0.693) → Val Loss: {avg_val_loss:.4f}")
         if not milestones['weak'] and avg_val_loss < 0.600:
             milestones['weak'] = True
             if verbose:
-                tqdm.write(f"  🎯 Milestone: Entered Weak Learning (0.600) → Val Loss: {avg_val_loss:.4f}")
+                tqdm.write(f"  Milestone: Entered Weak Learning (0.600) → Val Loss: {avg_val_loss:.4f}")
         if not milestones['basic'] and avg_val_loss < 0.500:
             milestones['basic'] = True
             if verbose:
-                tqdm.write(f"  🎯 Milestone: Entered Basic Heuristics (0.500) → Val Loss: {avg_val_loss:.4f}")
+                tqdm.write(f"  Milestone: Entered Basic Heuristics (0.500) → Val Loss: {avg_val_loss:.4f}")
         if not milestones['learning'] and avg_val_loss < 0.450:
             milestones['learning'] = True
             if verbose:
-                tqdm.write(f"  🎯 Milestone: Entered Deep Learning (0.450) → Val Loss: {avg_val_loss:.4f}")
+                tqdm.write(f"  Milestone: Entered Deep Learning (0.450) → Val Loss: {avg_val_loss:.4f}")
         if not milestones['expert'] and avg_val_loss < 0.450:
             milestones['expert'] = True
         
@@ -291,7 +292,7 @@ def train_coach(
             'train': f'{avg_train_loss:.4f}',
             'val': f'{avg_val_loss:.4f}',
             'best': f'{best_val_loss:.4f}',
-            'stage': f'{emoji} {stage}'
+            'stage': stage
         })
         
         # Save checkpoint if validation improves
@@ -307,9 +308,9 @@ def train_coach(
             
             if verbose:
                 abs_path = output_file.resolve()
-                tqdm.write(f"  ⭐ Epoch {epoch+1:02d}/{epochs}: New best model saved!")
+                tqdm.write(f"  Epoch {epoch+1:02d}/{epochs}: New best model saved!")
                 tqdm.write(f"     Path: {abs_path}")
-                tqdm.write(f"     Val Loss: {avg_val_loss:.4f} ({emoji} {stage})")
+                tqdm.write(f"     Val Loss: {avg_val_loss:.4f} ({stage})")
     
     if verbose:
         final_stage, final_emoji = interpret_val_loss(val_losses[-1] if val_losses else best_val_loss)
@@ -319,25 +320,25 @@ def train_coach(
         abs_output_path = output_file.resolve()
         
         tqdm.write(f"\n{'='*60}")
-        tqdm.write(f"✅ Training Complete!")
+        tqdm.write(f"Training Complete!")
         tqdm.write(f"   Model saved to: {abs_output_path}")
-        tqdm.write(f"\n📊 Validation Loss Analysis:")
-        tqdm.write(f"   Best Validation Loss: {best_val_loss:.4f} ({best_emoji} {best_stage})")
-        tqdm.write(f"   Final Validation Loss: {val_losses[-1]:.4f} ({final_emoji} {final_stage})")
+        tqdm.write(f"\nValidation Loss Analysis:")
+        tqdm.write(f"   Best Validation Loss: {best_val_loss:.4f} ({best_stage})")
+        tqdm.write(f"   Final Validation Loss: {val_losses[-1]:.4f} ({final_stage})")
         tqdm.write(f"   Final Train Loss: {train_losses[-1]:.4f}")
         
-        tqdm.write(f"\n🎯 Learning Milestones Reached:")
-        tqdm.write(f"   {'✅' if milestones['random'] else '❌'} Random Guessing Threshold (< 0.693)")
-        tqdm.write(f"   {'✅' if milestones['weak'] else '❌'} Weak Learning Threshold (< 0.600)")
-        tqdm.write(f"   {'✅' if milestones['basic'] else '❌'} Basic Heuristics Threshold (< 0.500)")
-        tqdm.write(f"   {'✅' if milestones['learning'] else '❌'} Deep Learning Threshold (< 0.450)")
+        tqdm.write(f"\nLearning Milestones Reached:")
+        tqdm.write(f"   {'[X]' if milestones['random'] else '[ ]'} Random Guessing Threshold (< 0.693)")
+        tqdm.write(f"   {'[X]' if milestones['weak'] else '[ ]'} Weak Learning Threshold (< 0.600)")
+        tqdm.write(f"   {'[X]' if milestones['basic'] else '[ ]'} Basic Heuristics Threshold (< 0.500)")
+        tqdm.write(f"   {'[X]' if milestones['learning'] else '[ ]'} Deep Learning Threshold (< 0.450)")
         
-        tqdm.write(f"\n📚 Interpretation Guide:")
-        tqdm.write(f"   ≥ 0.693 (🎲 Random): Model is guessing randomly")
-        tqdm.write(f"   0.600-0.693 (📉 Weak): Model is learning basic patterns")
-        tqdm.write(f"   0.500-0.600 (📊 Basic): Model has general heuristics")
-        tqdm.write(f"   0.450-0.500 (📈 Learning): Model is gaining insights")
-        tqdm.write(f"   < 0.450 (🎯 Expert): Model has deep game understanding")
+        tqdm.write(f"\nInterpretation Guide:")
+        tqdm.write(f"   >= 0.693 (Random): Model is guessing randomly")
+        tqdm.write(f"   0.600-0.693 (Weak): Model is learning basic patterns")
+        tqdm.write(f"   0.500-0.600 (Basic): Model has general heuristics")
+        tqdm.write(f"   0.450-0.500 (Learning): Model is gaining insights")
+        tqdm.write(f"   < 0.450 (Expert): Model has deep game understanding")
     
     return {
         'best_val_loss': best_val_loss,

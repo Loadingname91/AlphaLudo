@@ -1,14 +1,30 @@
 """
 Level 5: Multi-Agent Chaos (4 players, 2 tokens each)
 
-Final level before the ultimate challenge:
-- 4 players competing simultaneously
-- 2 tokens per player (must finish both to win)
-- Full rules: six-to-exit, capturing, safe zones
-- 16D state space (aggregate opponent features)
-- 3 actions: move token0, move token1, pass
+Game Rules:
+- 4 players competing simultaneously, 2 tokens each
+- Full track (60 positions: 0=home, 1-59=track, 60=goal)
+- YES six-to-exit rule (must roll 6 to leave home - traditional Ludo!)
+- YES capturing (land on opponent → send them home)
+- YES safe zones (positions 10, 20, 30, 40, 50)
+- Win: BOTH tokens reach goal (first player to finish both tokens wins)
 
-Target: 52%+ win rate (much harder with 3 opponents!)
+State: 16D vector (aggregate representation)
+  My tokens (9D): [avg_pos, leading_pos, trailing_pos, num_home, num_finished,
+                   vulnerable_0, vulnerable_1, can_exit_0, can_exit_1]
+  All opponents (6D): [avg_pos, leading_pos, trailing_pos, num_home, num_finished, num_vulnerable]
+    (aggregated across all 3 opponents' 6 tokens total)
+  Dice (1D): normalized current dice value
+
+Actions: 0=move token0, 1=move token1, 2=pass
+  - Action masking used (can only move valid tokens)
+
+Reward:
+  - Progress reward (+1 per position moved)
+  - Capture bonus (+30 per opponent token captured)
+  - Token completion (+100 for getting one token to goal)
+  - Win bonus (+500 for both tokens at goal)
+  - Loss penalty (-500 if any opponent wins)
 """
 
 import gymnasium as gym
@@ -17,7 +33,13 @@ from typing import Tuple, Dict, List, Optional
 
 
 class Level5MultiAgentLudo(gym.Env):
-    """Level 5: 4-player Ludo with 2 tokens each."""
+    """
+    Level 5: 4-player Ludo with 2 tokens each.
+
+    Key challenge: Multi-agent chaos - 4 players competing simultaneously, requiring
+    strategic decision-making while managing token coordination and dealing with
+    multiple opponents who can capture your tokens or win before you.
+    """
 
     metadata = {"render_modes": ["human"], "render_fps": 4}
 

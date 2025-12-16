@@ -9,7 +9,7 @@ import numpy as np
 import pickle
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-import torch
+
 
 
 class TrajectoryCollector:
@@ -34,7 +34,7 @@ class TrajectoryCollector:
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.trajectories = []
 
-        print(f"📁 Trajectory save directory: {self.save_dir}")
+        print(f"Trajectory save directory: {self.save_dir}")
 
     def collect_trajectory(self, env, agent, episode_id: int,
                           seed: Optional[int] = None) -> Dict[str, Any]:
@@ -169,7 +169,7 @@ class TrajectoryCollector:
             pickle.dump(batch_trajectories, f)
 
         if verbose:
-            print(f"💾 Saved {len(batch_trajectories)} trajectories to {save_path}\n")
+            print(f"Saved {len(batch_trajectories)} trajectories to {save_path}\n")
 
         self.trajectories.extend(batch_trajectories)
         return batch_trajectories
@@ -184,7 +184,7 @@ class TrajectoryCollector:
         avg_captured = np.mean([t['got_captured'] for t in trajectories])
         avg_reward = np.mean([t['final_reward'] for t in trajectories])
 
-        print(f"\n📊 Batch Statistics:")
+        print(f"\nP Batch Statistics:")
         print(f"  Total Episodes: {len(trajectories)}")
         print(f"  Wins: {wins} ({wins/len(trajectories)*100:.1f}%)")
         print(f"  Losses: {losses} ({losses/len(trajectories)*100:.1f}%)")
@@ -211,7 +211,7 @@ class TrajectoryCollector:
         with open(load_path, 'rb') as f:
             trajectories = pickle.load(f)
 
-        print(f"✅ Loaded {len(trajectories)} trajectories from {load_path}")
+        print(f"Loaded {len(trajectories)} trajectories from {load_path}")
         return trajectories
 
     def get_all_saved_batches(self) -> List[str]:
@@ -225,13 +225,13 @@ class TrajectoryCollector:
         all_trajectories = []
         batch_names = self.get_all_saved_batches()
 
-        print(f"📂 Found {len(batch_names)} saved batches")
+        print(f"Found {len(batch_names)} saved batches")
 
         for batch_name in batch_names:
             trajs = self.load_trajectories(batch_name)
             all_trajectories.extend(trajs)
 
-        print(f"✅ Total trajectories loaded: {len(all_trajectories)}")
+        print(f"Total trajectories loaded: {len(all_trajectories)}")
         return all_trajectories
 
     def summarize_all(self):
