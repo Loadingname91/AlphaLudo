@@ -419,7 +419,7 @@ class StandardLudoBoardVisualizer:
         legend_x = self.board_width - 350
         legend_y = self.board_height - 300
         legend_width = 330
-        legend_height = 280
+        legend_height = 300
         
         # Background
         cv2.rectangle(board, (legend_x, legend_y), 

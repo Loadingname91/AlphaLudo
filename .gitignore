@@ -59,3 +59,9 @@ Thumbs.db
 archive/
 checkpoints/
 .testscripts/
+
+# Assets - keep demo GIF for README, ignore others
+# assets/demo_gameplay.gif should be committed
+assets/*.mp4
+assets/*.avi
+assets/temp_*
